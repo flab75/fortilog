@@ -74,6 +74,10 @@ def _settings_changes(old: dict, new: dict) -> str:
 
 
 def _criticite(header: str, statut: str) -> str:
+    # Comptes SSO FortiGate Cloud (serial@fortigatecloud.com) : auto-provisionnés par
+    # FortiCloud, leurs écarts sont usuellement bénins -> info (pas critique).
+    if header.startswith("system sso-fortigate-cloud-admin"):
+        return "info"
     if header.startswith(("system admin", "system sso", "system api-user")):
         return "critique" if statut in ("AJOUTÉ", "SUPPRIMÉ") else "eleve"
     if header.startswith("system automation"):
@@ -116,6 +120,10 @@ def diff_configs(text_ok: str, text_current: str, all_sections: bool = False) ->
     if not rows:
         return pd.DataFrame(columns=cols + ["criticite"])
     df = pd.DataFrame(rows, columns=cols)
+    # Annoter les comptes cloud auto-provisionnés (FortiGate Cloud)
+    cloud = df["section"].str.startswith("system sso-fortigate-cloud-admin")
+    df.loc[cloud, "changements"] = ("(compte cloud FortiGuard auto-provisionné — diff usuellement bénigne) "
+                                    + df.loc[cloud, "changements"].astype(str)).str.strip()
     df["criticite"] = [_criticite(h, s) for h, s in zip(df["section"], df["statut"])]
     df["_rank"] = df["criticite"].map(SEV_ORDER).fillna(0).astype(int)
     return df.sort_values(["_rank", "section"], ascending=[False, True]).drop(columns="_rank").reset_index(drop=True)

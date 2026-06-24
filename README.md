@@ -177,7 +177,7 @@ python -m fortilog.confdiff reference.conf actuel.conf --logs ./logs    # --all 
 
 ## Tests
 
-Suite pytest versionnée : **156 tests rapides** + **8 tests sur vrais logs**.
+Suite pytest versionnée : **158 tests rapides** + **8 tests sur vrais logs**.
 
 ```bash
 # Tests rapides (fixtures synthétiques)
@@ -199,8 +199,8 @@ Couverture des tests :
   dégradation, top sources, exclusion infra, exclusion bogon interne).
 - **confaudit.py** : 11 cas (parsing CLI, C1-C6, config propre sans critique, tri par sévérité).
 - **analysis.py** : 6 cas (sections, corrélation WAN↔brute-force, alerte brèche, mode config-seul, vide).
-- **confdiff.py** : 10 cas (ajout/suppr/modif admin, nouvelle règle, param global, masquage secret,
-  attribution qui/quand depuis logs, absence de logs, en-tête « sauvé par »).
+- **confdiff.py** : 12 cas (ajout/suppr/modif admin, nouvelle règle, param global, masquage secret,
+  attribution qui/quand depuis logs, absence de logs, en-tête « sauvé par », compte cloud → info).
 - **compare.py** : 5 cas (agrégats, rafales, différentiel).
 - **correlate.py** : 11 cas (chaîne complète, bénin, activité admin légitime, ordre,
   fenêtre trop courte, mapping d'étapes, IP effective).

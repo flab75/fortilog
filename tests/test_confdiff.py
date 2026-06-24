@@ -56,6 +56,27 @@ def test_password_value_masked():
     assert "masquée" in chg
 
 
+def test_forticloud_account_downgraded_to_info():
+    """Un compte SSO FortiGate Cloud ajouté n'est PAS critique (auto-provisionné),
+    contrairement à un compte ajouté dans system admin."""
+    ok = 'config system sso-fortigate-cloud-admin\nend\n'
+    cur = ('config system sso-fortigate-cloud-admin\n'
+           '    edit "1b0309405148@fortigatecloud.com"\n        set vdom "root"\n    next\nend\n')
+    d = confdiff.diff_configs(ok, cur)
+    row = d[d["section"] == "system sso-fortigate-cloud-admin"].iloc[0]
+    assert row["statut"] == "AJOUTÉ"
+    assert row["criticite"] == "info"          # pas critique
+    assert "cloud FortiGuard" in row["changements"]
+
+
+def test_real_admin_add_still_critique():
+    """Un compte ajouté dans system admin (manuel) reste critique."""
+    ok = 'config system admin\nend\n'
+    cur = 'config system admin\n    edit "backdoor"\n        set accprofile "super_admin"\n    next\nend\n'
+    d = confdiff.diff_configs(ok, cur)
+    assert d.iloc[0]["criticite"] == "critique"
+
+
 def test_no_change_empty_diff():
     ok = (FIXTURES / "confdiff_ok.conf").read_text()
     d = confdiff.diff_configs(ok, ok)

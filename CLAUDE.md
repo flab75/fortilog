@@ -71,6 +71,8 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
   `action`/timestamp des events « Object attribute configured »). Le `.conf` seul ne porte que
   qui a *sauvegardé* le backup (en-tête `user=`). Hors fenêtre de logs → « inconnu » (jamais inventé).
 - Secrets/hashs (password, psksecret, private-key…) → **« (valeur masquée) »**.
+- Comptes SSO **FortiGate Cloud** (section `system sso-fortigate-cloud-admin`, format
+  `serial@fortigatecloud.com`) : auto-provisionnés → criticité **info** + mention (pas critique).
 - Accès : `python -m fortilog.confdiff ref.conf actuel.conf [--logs DIR] [--all]` ; section
   « 🔁 Comparer deux configurations » dans l'UI Streamlit. **Hors `main.run`** (outil dédié).
 - Garde-fou : un écart de config n'est pas une compromission (à confirmer).
@@ -210,7 +212,7 @@ externe » ne s'applique qu'aux accès **admin**.
 - **Inconnu** : tout autre type → parsing générique + marquage "(NON RECONNU)".
 
 ## État vérifié (tests réellement passés)
-- **Suite pytest : 156 tests rapides + 8 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
+- **Suite pytest : 158 tests rapides + 8 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
 - **Comparaison config** vérifiée sur vrais .conf : 127 écarts T1↔T2 ; attribution réelle
   (ex. « AdminHMBM modifié par AdminLGS le 2026-06-22 11:26 ») ; hashs masqués.
 - **Rapport de synthèse** vérifié sur vrai T1 : relie GUI exposée WAN ↔ 128 422 échecs de login
