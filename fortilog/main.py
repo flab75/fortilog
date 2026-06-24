@@ -132,11 +132,12 @@ def run(input_dir, config_path, output_dir, ref_conf=None):
     # différentiels : entre jours (par boîtier) + entre boîtiers
     diffs = []
     for boitier, g in full.groupby("boitier"):
-        days = sorted(g["timestamp"].dropna().dt.date.unique())
+        # .dt.date calculé une seule fois, puis découpage par jour via groupby
+        # (les dates NaT sont écartées automatiquement par le groupby).
+        by_day = {d: sub for d, sub in g.groupby(g["timestamp"].dt.date)}
+        days = sorted(by_day)
         for a, b in zip(days, days[1:]):
-            da = g[g["timestamp"].dt.date == a]
-            db = g[g["timestamp"].dt.date == b]
-            d = compare.diff_entities(da, db, f"{boitier} {a}", f"{boitier} {b}")
+            d = compare.diff_entities(by_day[a], by_day[b], f"{boitier} {a}", f"{boitier} {b}")
             if not d.empty:
                 diffs.append(d)
     boits = [b for b in full["boitier"].unique() if b != "inconnu"]
