@@ -170,11 +170,6 @@ def run(input_dir, config_path, output_dir, ref_conf=None):
             diffs.append(d)
     diff = pd.concat(diffs, ignore_index=True) if diffs else pd.DataFrame()
 
-    EVENT_COLS = ["timestamp", "boitier", "severite", "regle", "detail", "logdesc",
-                  "user", "ui", "srcip", "srcip_portee", "srcip_pays", "srcip_asn",
-                  "srcip_reputation", "dstip", "action", "status", "reason", "source_file"]
-    events_slim = events[[c for c in EVENT_COLS if c in events.columns]] if not events.empty else events
-
     MAX_UNIFIE = int(cfg.get("max_lignes_donnees_unifiees", 200000))
     unifie_cols = [c for c in TARGET_COLS if c in full.columns] + ["boitier", "timestamp", "source_file"]
     unifie = full[unifie_cols]

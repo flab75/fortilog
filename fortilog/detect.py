@@ -6,11 +6,7 @@ import re
 import numpy as np
 import pandas as pd
 
-SEV_ORDER = {"info": 0, "faible": 1, "moyen": 2, "eleve": 3, "critique": 4}
-CFG_ACCOUNT_PATHS = {
-    "system.admin", "system.sso-forticloud-admin",
-    "system.sso-fortigate-cloud-admin", "system.sso-admin", "system.api-user",
-}
+from .common import SEV_ORDER, CFG_ACCOUNT_PATHS, str_col
 
 
 def _internal_map(ips, nets) -> dict:
@@ -80,7 +76,7 @@ def run_detection(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     legit_dst = set(map(str, sum(cfg.get("destinations_legitimes", {}).values(), [])))
     mgmt_ips = {str(b.get("mgmt")) for b in cfg.get("boitiers", {}).values()}
 
-    g = lambda c: df.get(c, pd.Series([""] * len(df), index=df.index)).fillna("").astype(str)
+    g = lambda c: str_col(df, c)
     ld, st, rs = g("logdesc"), g("status"), g("reason")
     user, srcip, dstip = g("user"), g("srcip"), g("dstip")
     cfgpath, cfgobj, action, grp = g("cfgpath"), g("cfgobj"), g("action"), g("group")

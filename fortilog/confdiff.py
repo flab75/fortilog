@@ -13,9 +13,8 @@ from __future__ import annotations
 import re
 import pandas as pd
 
+from .common import SEV_ORDER, str_col
 from .confaudit import parse_config, find_blocks, parse_header_user
-
-SEV_ORDER = {"info": 0, "faible": 1, "moyen": 2, "eleve": 3, "critique": 4}
 
 # Sections « sensibles » (préfixes de header `config …`) — signal sur le bruit
 # (on ignore par défaut les gui-dashboard et cosmétiques). `all_sections=True` lève le filtre.
@@ -141,7 +140,7 @@ def load_change_events(logs_dir, cfg=None) -> pd.DataFrame:
         return pd.DataFrame(columns=cols)
     full = pd.concat(parts, ignore_index=True)
     full["timestamp"] = normalize.build_timestamp(full)
-    g = lambda c: full.get(c, pd.Series([""] * len(full))).fillna("").astype(str)
+    g = lambda c: str_col(full, c)
     mask = g("cfgobj").ne("") & g("cfgpath").ne("")
     out = full.loc[mask, [c for c in cols if c in full.columns]].copy()
     return out
