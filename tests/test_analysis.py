@@ -89,19 +89,35 @@ def _audit_rows(n):
     ])
 
 
-def test_section2_lists_individual_constats():
-    """La section 2 détaille les constats les plus sévères (détail + boîtier) et résume le reste."""
+def test_section2_lists_constats_under_each_rule():
+    """Sous chaque règle, ses constats individuels (détail + boîtier) jusqu'à 5, puis résumé."""
     text = analysis.build_analysis({"config_audit": _audit_rows(6)}, _meta(), {})
-    assert "Constats les plus sévères (5 sur 6)" in text
-    assert "admin=adm0 (aucun trusthost" in text   # détail du 1er constat affiché
+    assert "Compte admin sans restriction trusted-host — 6 constat(s)." in text
+    assert "admin=adm0 (aucun trusthost" in text   # 1er constat de la règle détaillé
     assert "(T1)" in text                            # boîtier indiqué
-    assert "et 1 autre" in text                      # le 6e résumé
+    assert "et 1 autre" in text                      # le 6e résumé (5 affichés)
+
+
+def test_section2_detail_per_rule_for_every_rule():
+    """Chaque règle a sa propre liste de constats imbriqués."""
+    ca = pd.concat([
+        pd.DataFrame({"boitier": ["T1"], "source_file": ["fw.conf"], "severite": ["critique"],
+                      "regle": ["Compte admin hors référentiel (config) — SUSPICION"],
+                      "detail": ["admin=backdoor profil=super_admin"]}),
+        _audit_rows(2),
+    ], ignore_index=True)
+    text = analysis.build_analysis({"config_audit": ca}, _meta(), {})
+    assert "Compte admin hors référentiel (config) — SUSPICION — 1 constat(s)." in text
+    assert "admin=backdoor profil=super_admin" in text
+    assert "Compte admin sans restriction trusted-host — 2 constat(s)." in text
+    assert "admin=adm0" in text and "admin=adm1" in text
 
 
 def test_section2_max_constats_configurable():
     text = analysis.build_analysis({"config_audit": _audit_rows(6)}, _meta(),
                                    {"rapport": {"max_constats": 2}})
-    assert "Constats les plus sévères (2 sur 6)" in text
+    assert "Compte admin sans restriction trusted-host — 6 constat(s)." in text
+    assert "admin=adm1" in text and "admin=adm2" not in text  # 2 détaillés seulement
     assert "et 4 autre" in text
 
 

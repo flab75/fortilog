@@ -88,10 +88,11 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
 - **Lecture d'ensemble** : relie les constats (GUI exposée sur WAN ↔ volume de brute-force ↔
   IP en réputation) et conclut explicitement « aucune compromission avérée » quand c'est le cas
   (jamais de conclusion non prouvée). Data-driven (compte les sévérités, règles, IP, échecs…).
-- **Détail par section** : §2 (config), §3 (events), §4 (IP externes/réputation) listent les
-  constats/lignes les plus sévères individuellement (détail + boîtier/géo), nombre réglable via
-  `rapport.max_constats` (config.yaml, défaut 5 ; au-delà : « … et N autres »). Le tag
-  [À CONFIRMER] couvre tout libellé « — SUSPICION » (pas seulement « hors référentiel »/« voyou »).
+- **Détail par section** : §2 (config) groupe les constats **par règle** et détaille, SOUS chaque
+  règle, ses constats individuels (détail confaudit + boîtier) ; §3 (events) et §4 (IP externes/
+  réputation) listent les lignes les plus sévères. Nombre réglable via `rapport.max_constats`
+  (config.yaml, défaut 5 ; au-delà : « … et N autres »). Le tag [À CONFIRMER] couvre tout libellé
+  « — SUSPICION » (pas seulement « hors référentiel »/« voyou »).
 
 ## Audit de configuration FortiGate (`confaudit.py`)
 - Parse le CLI FortiGate (`config/edit/set/next/end`) en arbre, puis applique une grille

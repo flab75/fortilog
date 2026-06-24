@@ -11,6 +11,8 @@ au principe directeur (l'outil signale, le verdict reste humain).
 from __future__ import annotations
 import pandas as pd
 
+from .common import SEV_ORDER
+
 
 def _sev_counts(df):
     if df is None or df.empty or "severite" not in df.columns:
@@ -103,21 +105,23 @@ def build_analysis(tables, meta, cfg) -> str:
         sc = _sev_counts(ca)
         ligne = ", ".join(f"{k}={sc[k]}" for k in ["critique", "eleve", "moyen", "faible", "info"] if k in sc)
         L.append(f"- {len(ca)} constat(s) d'audit sur {meta.get('n_configs', 0)} configuration(s) ({ligne}).")
-        # récap par type de constat
-        L.append("- Par type de constat :")
-        for regle, n in ca.groupby("regle").size().sort_values(ascending=False).items():
-            L.append(f"  - {_config_tag(regle)} {regle} — {n}.")
-        # constats individuels les plus sévères (table déjà triée par sévérité décroissante)
-        n_show = min(len(ca), max_constats)
-        L.append(f"- Constats les plus sévères ({n_show} sur {len(ca)}) :")
-        for i, (_, r) in enumerate(ca.head(n_show).iterrows(), 1):
-            detail = str(r.get("detail", "") or "").strip()
-            detail = f" — {detail}" if detail else ""
-            boit = f" ({r['boitier']})" if r.get("boitier") else ""
-            L.append(f"  {i}. {r.get('severite', '')} · {_config_tag(r.get('regle', ''))} "
-                     f"{r.get('regle', '')}{detail}{boit}.")
-        if len(ca) > n_show:
-            L.append(f"  (… et {len(ca) - n_show} autre(s) — voir la feuille « Audit config ».)")
+        # Constats groupés par type de règle ; SOUS chaque règle, ses constats
+        # individuels détaillés (jusqu'à max_constats). Règles ordonnées par sévérité
+        # max décroissante puis par volume.
+        L.append(f"- Par type de constat (jusqu'à {max_constats} détaillé(s) par type) :")
+        ranked = (ca.assign(_r=ca["severite"].map(SEV_ORDER).fillna(0))
+                    .groupby("regle")
+                    .agg(n=("regle", "size"), rmax=("_r", "max"))
+                    .sort_values(["rmax", "n"], ascending=[False, False]))
+        for regle, row in ranked.iterrows():
+            n = int(row["n"])
+            L.append(f"  - {_config_tag(regle)} {regle} — {n} constat(s).")
+            for i, (_, r) in enumerate(ca[ca["regle"] == regle].head(max_constats).iterrows(), 1):
+                detail = str(r.get("detail", "") or "").strip()
+                boit = f" ({r['boitier']})" if r.get("boitier") else ""
+                L.append(f"    {i}. {detail}{boit}.")
+            if n > max_constats:
+                L.append(f"    (… et {n - max_constats} autre(s) — voir la feuille « Audit config ».)")
         # explications ciblées
         joined = " ".join(ca["regle"].tolist())
         if "WAN" in joined:
