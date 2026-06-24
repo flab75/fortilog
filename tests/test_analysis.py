@@ -53,6 +53,20 @@ def test_report_config_only_mode():
     assert "[À CONFIRMER]" in text  # le compte hors référentiel est marqué à confirmer
 
 
+def test_report_includes_config_diff():
+    """Si une comparaison de config est présente, le rapport global la résume."""
+    cd = pd.DataFrame({
+        "boitier": ["T1", "T1"], "section": ["system admin", "firewall policy"],
+        "objet": ["backdoor", "99"], "statut": ["AJOUTÉ", "AJOUTÉ"],
+        "changements": ["+accprofile", "+action=accept"],
+        "criticite": ["critique", "eleve"], "auteur": ["ghost", "inconnu"], "quand": ["2026-06-23", ""],
+    })
+    text = analysis.build_analysis({"config_diff": cd}, _meta(config_ref="ok.conf"), {})
+    assert "Changements de configuration vs ok.conf" in text
+    assert "compte(s) admin ajouté(s)" in text
+    assert "ghost" in text
+
+
 def test_report_empty_inputs():
     text = analysis.build_analysis({}, _meta(n_files=0, n_rows=0, n_configs=0), {})
     assert "# RAPPORT D'ANALYSE" in text

@@ -35,7 +35,7 @@ fortilog/
 │   ├── confdiff.py  # comparaison 2 .conf (ajout/suppr/modif) + attribution qui/quand via logs ; CLI
 │   ├── analysis.py  # build_analysis : rapport de SYNTHÈSE (décrit/explique, [AVÉRÉ]/[À CONFIRMER])
 │   ├── report.py    # build_report (texte détaillé) + rappel des limites
-│   ├── excel.py     # write_workbook (xlsxwriter, 11 feuilles, « Rapport » en 1re)
+│   ├── excel.py     # write_workbook (xlsxwriter, 12 feuilles, « Rapport » en 1re)
 │   ├── validate.py  # validate_config : vérifie le config.yaml au démarrage (CIDR, regex, seuils)
 │   ├── ui_helpers.py # prepare_events/metrics/agg/bursts/diff — helpers testables hors-UI
 │   └── main.py      # run(input, config, output) + CLI argparse
@@ -73,8 +73,11 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
 - Secrets/hashs (password, psksecret, private-key…) → **« (valeur masquée) »**.
 - Comptes SSO **FortiGate Cloud** (section `system sso-fortigate-cloud-admin`, format
   `serial@fortigatecloud.com`) : auto-provisionnés → criticité **info** + mention (pas critique).
-- Accès : `python -m fortilog.confdiff ref.conf actuel.conf [--logs DIR] [--all]` ; section
-  « 🔁 Comparer deux configurations » dans l'UI Streamlit. **Hors `main.run`** (outil dédié).
+- Accès : (1) outil dédié `python -m fortilog.confdiff ref.conf actuel.conf [--logs DIR] [--all]`
+  + section « 🔁 Comparer deux configurations » dans l'UI ; (2) **intégré à l'analyse générale** :
+  `run(..., ref_conf=...)` / `--ref-conf` / dépôt « config de référence » dans Streamlit → compare
+  les `.conf` du dossier à la référence (attribution via les logs chargés), table `config_diff`
+  → feuille « Comparaison config » + section rapport + **synthèse globale** (`analysis`).
 - Garde-fou : un écart de config n'est pas une compromission (à confirmer).
 
 ## Rapport de synthèse (`analysis.py`)
@@ -212,7 +215,7 @@ externe » ne s'applique qu'aux accès **admin**.
 - **Inconnu** : tout autre type → parsing générique + marquage "(NON RECONNU)".
 
 ## État vérifié (tests réellement passés)
-- **Suite pytest : 158 tests rapides + 8 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
+- **Suite pytest : 160 tests rapides + 8 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
 - **Comparaison config** vérifiée sur vrais .conf : 127 écarts T1↔T2 ; attribution réelle
   (ex. « AdminHMBM modifié par AdminLGS le 2026-06-22 11:26 ») ; hashs masqués.
 - **Rapport de synthèse** vérifié sur vrai T1 : relie GUI exposée WAN ↔ 128 422 échecs de login

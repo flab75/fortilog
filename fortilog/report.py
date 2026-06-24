@@ -51,6 +51,21 @@ def build_report(tables, meta) -> str:
         for _, r in ca.iterrows():
             L.append(f"    [{r['severite']}] {r['boitier']} | {r['regle']} | {r['detail']}")
         L.append("")
+    cd = tables.get("config_diff")
+    if cd is not None and not cd.empty:
+        ref = meta.get("config_ref") or "référence"
+        L.append(f"CHANGEMENTS DE CONFIGURATION vs {ref} — {len(cd)} écart(s) (à confirmer) :")
+        counts = cd["criticite"].value_counts()
+        for sev in ["critique", "eleve", "moyen", "faible", "info"]:
+            if sev in counts:
+                L.append(f"  {sev:9}: {counts[sev]}")
+        prio = cd[cd["criticite"].isin(["critique", "eleve"])]
+        for _, r in prio.head(30).iterrows():
+            who = f" | par {r['auteur']}" + (f" le {r['quand']}" if r.get("quand") else "") \
+                if r.get("auteur") else ""
+            L.append(f"    [{r['criticite']}] {r['statut']} {r['section']}/{r['objet']}"
+                     f" | {str(r['changements'])[:60]}{who}")
+        L.append("")
     agg = tables["agg"]
     if agg is not None and not agg.empty:
         L.append("AGRÉGATS PAR BOÎTIER / JOUR :")

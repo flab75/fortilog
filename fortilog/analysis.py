@@ -84,6 +84,27 @@ def build_analysis(tables, meta, cfg) -> str:
                      "(peut être un ajout légitime récent — À CONFIRMER, pas une preuve).")
     L.append("")
 
+    # 2bis. Changements de configuration vs référence
+    cd = tables.get("config_diff")
+    if cd is not None and not cd.empty:
+        ref = meta.get("config_ref") or "config de référence"
+        h(f"## 2bis. Changements de configuration vs {ref} — [À CONFIRMER]")
+        cc = cd["criticite"].value_counts().to_dict()
+        ligne = ", ".join(f"{k}={cc[k]}" for k in ["critique", "eleve", "moyen", "faible", "info"] if k in cc)
+        L.append(f"- {len(cd)} écart(s) de configuration ({ligne}).")
+        prio = cd[cd["criticite"].isin(["critique", "eleve"])]
+        for _, r in prio.head(12).iterrows():
+            who = ""
+            if r.get("auteur"):
+                who = f" — par **{r['auteur']}**" + (f" le {r['quand']}" if r.get("quand") else "")
+            L.append(f"  - [{r['statut']}] `{r['section']}` / `{r['objet']}`{who}.")
+        added_admins = cd[(cd["statut"] == "AJOUTÉ") & cd["section"].str.startswith("system admin")]
+        if not added_admins.empty:
+            L.append(f"  → ⚠ {len(added_admins)} **compte(s) admin ajouté(s)** : vérifier qu'ils sont "
+                     "légitimes (présents au référentiel, créés par un admin connu).")
+        L.append("  (Un changement légitime n'est pas une compromission — à confirmer.)")
+        L.append("")
+
     # 3. Activité dans les logs
     h("## 3. Activité observée dans les logs")
     if events is None or events.empty:

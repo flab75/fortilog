@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, analysis
+from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis
 from .validate import validate_config
 
 
@@ -48,7 +48,25 @@ def load_file(path: Path) -> pd.DataFrame:
     return df
 
 
-def run(input_dir, config_path, output_dir):
+def _compute_config_diff(ref_conf, conf_files, logs_dir, cfg, boitier_for):
+    """Compare chaque .conf courant à une config de RÉFÉRENCE (validée), avec
+    attribution qui/quand via les logs. Renvoie un DataFrame (vide si pas de référence)."""
+    cols = ["boitier", "section", "objet", "statut", "changements", "criticite", "auteur", "quand"]
+    if not ref_conf or not conf_files:
+        return pd.DataFrame(columns=cols)
+    ref_text = Path(ref_conf).read_text(errors="replace")
+    change_ev = confdiff.load_change_events(logs_dir, cfg) if logs_dir else pd.DataFrame()
+    parts = []
+    for cf in conf_files:
+        d = confdiff.diff_configs(ref_text, Path(cf).read_text(errors="replace"))
+        d = confdiff.attribute_changes(d, change_ev)
+        d.insert(0, "boitier", boitier_for(cf.name))
+        d.insert(1, "fichier", Path(cf).name)
+        parts.append(d)
+    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=cols)
+
+
+def run(input_dir, config_path, output_dir, ref_conf=None):
     cfg = yaml.safe_load(Path(config_path).read_text())
     errors = validate_config(cfg)
     if errors:
@@ -67,6 +85,9 @@ def run(input_dir, config_path, output_dir):
                 return b
         return "inconnu"
     config_audit = confaudit.audit_files(conf_files, cfg, boitier_map=_boitier_for)
+    # Comparaison à une config de RÉFÉRENCE (optionnelle) : qu'est-ce qui a changé / par qui.
+    config_diff = _compute_config_diff(ref_conf, conf_files, input_dir if files else None,
+                                       cfg, _boitier_for)
 
     if not files:
         # Mode AUDIT CONFIG SEUL : import de .conf sans logs.
@@ -75,12 +96,14 @@ def run(input_dir, config_path, output_dir):
         tables = {"unifie": empty, "events": empty, "chains": empty, "agg": empty,
                   "bursts": empty, "diff": empty, "security_rating": empty,
                   "sources_externes": empty, "reputation": empty,
-                  "config_audit": config_audit, "ref": pd.DataFrame(ref_rows)}
+                  "config_audit": config_audit, "config_diff": config_diff,
+                  "ref": pd.DataFrame(ref_rows)}
         meta = {"n_files": 0, "n_rows": 0, "dedup": 0,
                 "files": [{"name": p.name, "type": "config", "subtype": "fortigate",
                            "reconnu": True, "rows": 0} for p in conf_files],
                 "geo_available": False, "reputation_available": False,
-                "n_configs": len(conf_files)}
+                "n_configs": len(conf_files), "n_config_changes": len(config_diff),
+                "config_ref": Path(ref_conf).name if ref_conf else None}
         return _emit(out, tables, meta, cfg)
 
     parts, meta_files = [], []
@@ -178,13 +201,15 @@ def run(input_dir, config_path, output_dir):
         "sources_externes": sources_ext,
         "reputation": reputation,
         "config_audit": config_audit,
+        "config_diff": config_diff,
         "ref": pd.DataFrame(ref_rows),
     }
     meta = {"n_files": len(files), "n_rows": len(full),
             "dedup": full.attrs.get("dedup_removed", 0), "files": meta_files,
             "geo_available": enricher.available,
             "reputation_available": repdb.available,
-            "n_configs": len(conf_files)}
+            "n_configs": len(conf_files), "n_config_changes": len(config_diff),
+            "config_ref": Path(ref_conf).name if ref_conf else None}
 
     return _emit(out, tables, meta, cfg)
 
@@ -194,8 +219,10 @@ def main():
     ap.add_argument("--input", required=True, help="dossier des fichiers .log")
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--output", default="./rapport")
+    ap.add_argument("--ref-conf", dest="ref_conf", default=None,
+                    help="config .conf de référence/validée à comparer aux .conf du dossier")
     a = ap.parse_args()
-    run(a.input, a.config, a.output)
+    run(a.input, a.config, a.output, ref_conf=a.ref_conf)
 
 
 if __name__ == "__main__":

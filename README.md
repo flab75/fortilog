@@ -45,7 +45,7 @@ python -m fortilog.main --input ./logs --config config.yaml --output ./rapport
 - `--config` : référentiel « du normal » + paramètres (voir `config.yaml`).
 - `--output` : produit `rapport_fortigate.txt` et `rapport_fortigate.xlsx`.
 
-## Sorties (classeur, 11 feuilles)
+## Sorties (classeur, 12 feuilles)
 0. `Rapport` — **synthèse** qui décrit les résultats et explique les problèmes, en distinguant
    **[AVÉRÉ]** (état de config, volumes) de **[À CONFIRMER]** (suspicions). Aussi en tête du
    rapport texte et dans l'onglet « Rapport » de l'UI Streamlit.
@@ -54,11 +54,12 @@ python -m fortilog.main --input ./logs --config config.yaml --output ./rapport
 3. `Chaines suspectes` — séquences corrélées (accès→compte→exfiltration) — **à confirmer**.
 4. `IP malveillantes` — sources présentes dans une liste de réputation (threat intel) — **à confirmer**.
 5. `Audit config` — constats sur les `.conf` FortiGate importés (comptes, accès, automation) — **à confirmer**.
-6. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
-7. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
-8. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
-9. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
-10. `Referentiel` — la configuration du « normal » utilisée.
+6. `Comparaison config` — écarts (ajout/suppr/modif) vs une config de référence + attribution qui/quand — **à confirmer**.
+7. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
+8. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
+9. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
+10. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
+11. `Referentiel` — la configuration du « normal » utilisée.
 
 ## Détection (grille d'audit, 12 règles)
 - Login admin réussi depuis source **externe** (critique) / compte hors référentiel (élevé).
@@ -145,6 +146,14 @@ python -m fortilog.confdiff reference.conf actuel.conf --logs ./logs    # --all 
 - Hashs/secrets (mots de passe, clés, psksecret) → **« (valeur masquée) »**.
 - Aussi dans l'UI Streamlit : section **« 🔁 Comparer deux configurations »** (les logs déposés
   servent à l'attribution).
+- **Intégré à l'analyse générale** : fournissez une config de référence et la comparaison entre
+  dans le **rapport global** (feuille Excel « Comparaison config », section du rapport, synthèse) :
+  ```bash
+  python -m fortilog.main --input ./logs --config config.local.yaml --output ./rapport \
+         --ref-conf reference.conf
+  ```
+  Dans Streamlit : déposez un fichier dans **« Config de référence / validée »** avant de lancer
+  l'analyse (onglet « 🔁 Comparaison config »).
 - Un écart de config n'est **pas** une compromission — à confirmer.
 
 ## Format & parsing
@@ -177,7 +186,7 @@ python -m fortilog.confdiff reference.conf actuel.conf --logs ./logs    # --all 
 
 ## Tests
 
-Suite pytest versionnée : **158 tests rapides** + **8 tests sur vrais logs**.
+Suite pytest versionnée : **160 tests rapides** + **8 tests sur vrais logs**.
 
 ```bash
 # Tests rapides (fixtures synthétiques)

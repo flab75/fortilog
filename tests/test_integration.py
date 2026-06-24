@@ -108,10 +108,38 @@ def test_run_config_only():
         assert not tables["config_audit"].empty
         assert (tables["config_audit"]["severite"] == "critique").any()
         assert meta["n_configs"] == 1
+        assert tables["config_diff"].empty   # pas de config de référence -> pas de comparaison
 
         wb = load_workbook(output_dir / "rapport_fortigate.xlsx")
         assert "Audit config" in wb.sheetnames
         assert "Rapport" in wb.sheetnames
+    finally:
+        shutil.rmtree(input_dir, ignore_errors=True)
+        shutil.rmtree(output_dir, ignore_errors=True)
+
+
+def test_run_with_config_diff():
+    """run() avec une config de RÉFÉRENCE : la comparaison est intégrée au rapport global."""
+    from fortilog.main import run
+    from openpyxl import load_workbook
+
+    input_dir = Path(tempfile.mkdtemp())
+    output_dir = Path(tempfile.mkdtemp())
+    try:
+        shutil.copy(FIXTURES / "login_admin_ext.log", input_dir / "ev.log")
+        shutil.copy(FIXTURES / "confdiff_current.conf", input_dir / "current.conf")
+        ref = FIXTURES / "confdiff_ok.conf"
+        tables, meta = run(str(input_dir), str(CONFIG_PATH), str(output_dir), ref_conf=str(ref))
+
+        cd = tables["config_diff"]
+        assert not cd.empty
+        assert (cd["objet"] == "backdoor").any()        # compte ajouté détecté
+        assert meta["n_config_changes"] > 0
+        assert meta["config_ref"] == "confdiff_ok.conf"
+        assert "Changements de configuration" in meta["analysis"]
+
+        wb = load_workbook(output_dir / "rapport_fortigate.xlsx")
+        assert "Comparaison config" in wb.sheetnames
     finally:
         shutil.rmtree(input_dir, ignore_errors=True)
         shutil.rmtree(output_dir, ignore_errors=True)

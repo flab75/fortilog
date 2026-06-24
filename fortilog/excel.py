@@ -3,8 +3,8 @@ from __future__ import annotations
 import pandas as pd
 
 SHEETS_ORDER = ["Rapport", "Tableau de bord", "Evenements signales", "Chaines suspectes",
-                "IP malveillantes", "Audit config", "Sources externes", "Rafales",
-                "Differentiels", "Donnees unifiees", "Referentiel"]
+                "IP malveillantes", "Audit config", "Comparaison config", "Sources externes",
+                "Rafales", "Differentiels", "Donnees unifiees", "Referentiel"]
 
 SEV_COLORS = {"critique": "#C00000", "eleve": "#E26B0A", "moyen": "#BF8F00",
               "faible": "#7F7F7F", "info": "#9CC3E5"}
@@ -82,6 +82,15 @@ def write_workbook(path, tables, cfg, analysis_text=""):
             col = list(ca.columns).index("severite")
             for sev, color in SEV_COLORS.items():
                 wsca.conditional_format(1, col, len(ca), col, {
+                    "type": "text", "criteria": "containing", "value": sev,
+                    "format": wb.add_format({"bg_color": color, "font_color": "white"})})
+        # Comparaison à une config de référence (qu'est-ce qui a changé / par qui)
+        cd = tables.get("config_diff")
+        wscd = _write_df(writer, "Comparaison config", cd, header_fmt)
+        if cd is not None and not cd.empty and "criticite" in cd.columns:
+            col = list(cd.columns).index("criticite")
+            for sev, color in SEV_COLORS.items():
+                wscd.conditional_format(1, col, len(cd), col, {
                     "type": "text", "criteria": "containing", "value": sev,
                     "format": wb.add_format({"bg_color": color, "font_color": "white"})})
         # Sources externes (contexte géo/ASN) — top des IP externes par volume
