@@ -78,3 +78,57 @@ def test_report_signals_inconnu_boitier():
                            "regle": ["x", "y"]})
     text = analysis.build_analysis({"events": events}, _meta(), {})
     assert "inconnu" in text and "config.local.yaml" in text
+
+
+def _audit_rows(n):
+    return pd.DataFrame([
+        {"boitier": "T1", "source_file": "fw.conf", "severite": "eleve",
+         "regle": "Compte admin sans restriction trusted-host",
+         "detail": f"admin=adm{i} (aucun trusthost -> joignable de toute IP)"}
+        for i in range(n)
+    ])
+
+
+def test_section2_lists_individual_constats():
+    """La section 2 détaille les constats les plus sévères (détail + boîtier) et résume le reste."""
+    text = analysis.build_analysis({"config_audit": _audit_rows(6)}, _meta(), {})
+    assert "Constats les plus sévères (5 sur 6)" in text
+    assert "admin=adm0 (aucun trusthost" in text   # détail du 1er constat affiché
+    assert "(T1)" in text                            # boîtier indiqué
+    assert "et 1 autre" in text                      # le 6e résumé
+
+
+def test_section2_max_constats_configurable():
+    text = analysis.build_analysis({"config_audit": _audit_rows(6)}, _meta(),
+                                   {"rapport": {"max_constats": 2}})
+    assert "Constats les plus sévères (2 sur 6)" in text
+    assert "et 4 autre" in text
+
+
+def test_section2_suspicion_tagged_a_confirmer():
+    """Un constat « — SUSPICION » (ex. SSO cloud inhabituel) est marqué [À CONFIRMER]
+    même sans les mots 'hors référentiel'/'voyou'."""
+    ca = pd.DataFrame({"boitier": ["T1"], "source_file": ["fw.conf"], "severite": ["eleve"],
+                       "regle": ["Compte SSO cloud au nom inhabituel — SUSPICION"], "detail": ["sso=x"]})
+    text = analysis.build_analysis({"config_audit": ca}, _meta(), {})
+    assert "[À CONFIRMER] Compte SSO cloud au nom inhabituel" in text
+
+
+def test_section3_lists_top_events():
+    events = pd.DataFrame({"timestamp": ["2026-06-23 10:00:00"], "boitier": ["T1"],
+                           "severite": ["critique"],
+                           "regle": ["Login admin réussi depuis source externe"],
+                           "detail": ["user=adminA srcip=203.0.113.5"]})
+    text = analysis.build_analysis({"events": events}, _meta(), {})
+    assert "Événements les plus sévères" in text
+    assert "user=adminA srcip=203.0.113.5" in text
+
+
+def test_section4_lists_reputation_ips():
+    rep = pd.DataFrame({"srcip": ["1.2.3.4", "5.6.7.8"], "listes": ["FireHOL", "FireHOL"],
+                        "srcip_pays": ["GB", "US"], "srcip_asn": ["60068", "13335"],
+                        "srcip_org": ["DATACAMP", "CLOUDFLARE"],
+                        "occurrences": [4907, 10], "logins_echoues": [4907, 0]})
+    text = analysis.build_analysis({"reputation": rep}, _meta(), {})
+    assert "1.2.3.4 — GB / AS60068 DATACAMP" in text
+    assert "FireHOL" in text

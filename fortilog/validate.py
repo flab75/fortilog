@@ -197,4 +197,18 @@ def validate_config(cfg: dict) -> list[str]:
                 if not isinstance(seq, list) or len(seq) < 2:
                     errors.append("correlation.sequence_requise : attendu une liste d'au moins 2 étapes")
 
+    # Rapport de synthèse (section optionnelle) : max_constats entier > 0
+    rap = cfg.get("rapport")
+    if rap is not None:
+        if not isinstance(rap, dict):
+            errors.append(f"rapport : attendu un dictionnaire, reçu {type(rap).__name__}")
+        else:
+            mc = rap.get("max_constats")
+            if mc is not None:
+                try:
+                    if int(mc) <= 0:
+                        errors.append(f"rapport.max_constats : doit être > 0, reçu {mc}")
+                except (ValueError, TypeError):
+                    errors.append(f"rapport.max_constats : '{mc}' n'est pas un entier valide")
+
     return errors

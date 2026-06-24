@@ -27,6 +27,38 @@ def _period(tables):
     return "n/d"
 
 
+def _config_tag(regle) -> str:
+    """[À CONFIRMER] pour les constats de SUSPICION (compte hors référentiel, nom voyou,
+    SSO cloud inhabituel…) ; [AVÉRÉ] pour les états de configuration factuels."""
+    s = str(regle)
+    if "SUSPICION" in s or "hors référentiel" in s or "voyou" in s:
+        return "[À CONFIRMER]"
+    return "[AVÉRÉ]"
+
+
+def _geo_str(r) -> str:
+    """Résumé géo/ASN d'une ligne IP (pays / ASN org), '?' si pays inconnu."""
+    pays = str(r.get("srcip_pays") or "").strip() or "?"
+    asn = str(r.get("srcip_asn") or "").strip()
+    org = str(r.get("srcip_org") or "").strip()
+    return pays + (f" / AS{asn}" + (f" {org}" if org else "") if asn else "")
+
+
+def _ip_line(r) -> str:
+    """Ligne synthétique pour une IP source (géo + volume + logins échoués)."""
+    occ = int(r.get("occurrences", 0) or 0)
+    fails = int(r.get("logins_echoues", 0) or 0)
+    return f"{r.get('srcip','')} — {_geo_str(r)} — {occ:,} occ., {fails:,} login(s) échoué(s)"
+
+
+def _max_constats(cfg) -> int:
+    """Nombre de constats/lignes détaillés par section (config.yaml `rapport.max_constats`, défaut 5)."""
+    try:
+        return max(1, int((cfg.get("rapport") or {}).get("max_constats", 5)))
+    except (ValueError, TypeError):
+        return 5
+
+
 def build_analysis(tables, meta, cfg) -> str:
     events = tables.get("events")
     ca = tables.get("config_audit")
@@ -35,6 +67,7 @@ def build_analysis(tables, meta, cfg) -> str:
     se = tables.get("sources_externes")
     agg = tables.get("agg")
     bursts = tables.get("bursts")
+    max_constats = _max_constats(cfg)
     L: list[str] = []
 
     def h(t): L.append(t); L.append("")
@@ -67,10 +100,24 @@ def build_analysis(tables, meta, cfg) -> str:
     if ca is None or ca.empty:
         L.append("- Aucun fichier de configuration importé (ou aucun constat).")
     else:
-        by_rule = ca.groupby("regle").size().sort_values(ascending=False)
-        for regle, n in by_rule.items():
-            tag = "[À CONFIRMER]" if ("hors référentiel" in regle or "voyou" in regle) else "[AVÉRÉ]"
-            L.append(f"- {tag} {regle} — {n} constat(s).")
+        sc = _sev_counts(ca)
+        ligne = ", ".join(f"{k}={sc[k]}" for k in ["critique", "eleve", "moyen", "faible", "info"] if k in sc)
+        L.append(f"- {len(ca)} constat(s) d'audit sur {meta.get('n_configs', 0)} configuration(s) ({ligne}).")
+        # récap par type de constat
+        L.append("- Par type de constat :")
+        for regle, n in ca.groupby("regle").size().sort_values(ascending=False).items():
+            L.append(f"  - {_config_tag(regle)} {regle} — {n}.")
+        # constats individuels les plus sévères (table déjà triée par sévérité décroissante)
+        n_show = min(len(ca), max_constats)
+        L.append(f"- Constats les plus sévères ({n_show} sur {len(ca)}) :")
+        for i, (_, r) in enumerate(ca.head(n_show).iterrows(), 1):
+            detail = str(r.get("detail", "") or "").strip()
+            detail = f" — {detail}" if detail else ""
+            boit = f" ({r['boitier']})" if r.get("boitier") else ""
+            L.append(f"  {i}. {r.get('severite', '')} · {_config_tag(r.get('regle', ''))} "
+                     f"{r.get('regle', '')}{detail}{boit}.")
+        if len(ca) > n_show:
+            L.append(f"  (… et {len(ca) - n_show} autre(s) — voir la feuille « Audit config ».)")
         # explications ciblées
         joined = " ".join(ca["regle"].tolist())
         if "WAN" in joined:
@@ -113,6 +160,17 @@ def build_analysis(tables, meta, cfg) -> str:
         sc = _sev_counts(events)
         ligne = ", ".join(f"{k}={sc[k]}" for k in ["critique", "eleve", "moyen", "faible", "info"] if k in sc)
         L.append(f"- Événements signalés : {len(events)} ({ligne}).")
+        # événements individuels les plus sévères (table déjà triée par sévérité décroissante)
+        n_show = min(len(events), max_constats)
+        if n_show and "regle" in events.columns:
+            L.append(f"- Événements les plus sévères ({n_show} sur {len(events)}) :")
+            for i, (_, r) in enumerate(events.head(n_show).iterrows(), 1):
+                ts = str(r.get("timestamp", "") or "")[:19]
+                detail = str(r.get("detail", "") or "").strip()
+                detail = f" — {detail}" if detail else ""
+                boit = f" ({r['boitier']})" if r.get("boitier") else ""
+                head = f"{ts} · " if ts else ""
+                L.append(f"  {i}. {head}{r.get('severite', '')} · {r.get('regle', '')}{detail}{boit}.")
         if agg is not None and not agg.empty and "echecs_login" in agg.columns:
             tot_fail = int(agg["echecs_login"].sum())
             tot_ok = int(agg["logins_ok"].sum()) if "logins_ok" in agg.columns else 0
@@ -140,10 +198,19 @@ def build_analysis(tables, meta, cfg) -> str:
     h("## 4. Origine des accès externes (géo / threat intel)")
     if se is not None and not se.empty:
         L.append(f"- {len(se)} IP source externe(s) classées par volume.")
+        n_show = min(len(se), max_constats)
+        L.append(f"  - Top {n_show} :")
+        for i, (_, r) in enumerate(se.head(n_show).iterrows(), 1):
+            L.append(f"    {i}. {_ip_line(r)}.")
     if rep is not None and not rep.empty:
         L.append(f"- ⚠ [AVÉRÉ] {len(rep)} IP ayant touché le pare-feu sont présentes dans une "
                  "**liste de réputation** (IP déjà connues malveillantes). Présence = signal fort, "
                  "À CONFIRMER (listes parfois larges).")
+        n_show = min(len(rep), max_constats)
+        L.append(f"  - {n_show} première(s) :")
+        for i, (_, r) in enumerate(rep.head(n_show).iterrows(), 1):
+            listes = str(r.get("listes", "") or "")
+            L.append(f"    {i}. {_ip_line(r)} — listes : {listes}.")
     if (se is None or se.empty) and (rep is None or rep.empty):
         L.append("- Pas d'enrichissement disponible (ni sources externes, ni listes de réputation).")
     L.append("")
