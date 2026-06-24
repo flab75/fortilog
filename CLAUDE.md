@@ -26,7 +26,8 @@ fortilog/
 ├── fortilog/
 │   ├── common.py    # constantes/helpers partagés : SEV_ORDER, CFG_ACCOUNT_PATHS, str_col
 │   ├── parse.py     # parse_line : clé=valeur, valeurs quotées + échappements Fortinet (\" \\)
-│   ├── ingest.py    # list_log_files + detect_type (par type/subtype/logid)
+│   ├── ingest.py    # list_log_files + detect_type ; load_file (parsing colonnaire,
+│   │                #   ANALYSIS_COLS) + load_columns_for_rows (2e passe colonnes d'affichage)
 │   ├── normalize.py # build_timestamp, assign_boitier (par IP + indice fichier), deduplicate
 │   ├── detect.py    # run_detection VECTORISÉE (masques pandas) -> événements + sévérité
 │   ├── compare.py   # aggregate (jour/heure), detect_bursts (adaptatif), diff_entities (6 entités)
@@ -246,8 +247,11 @@ externe » ne s'applique qu'aux accès **admin**.
   config valide → RAS. Vérifie CIDR, IP, regex, seuils, clés requises.
 
 ## Limites connues (documentées, à ne pas masquer)
-- **Mémoire ≈ 9× la taille d'entrée** ; ~380 Mo cumulés saturent un environnement
-  contraint → recommander le traitement par batch (jour/boîtier) en attendant P5.
+- **Mémoire (P5 phase 1+2 faite)** : parsing colonnaire + frame d'analyse restreint à
+  `ANALYSIS_COLS` (colonnes d'affichage relues en 2e passe pour la seule feuille unifiée).
+  Pic mesuré sur vrais logs T1 (392 541 lignes) : **2424 → 1599 Mo (−34 %)**, sorties
+  identiques. Reste à attaquer si besoin : transitoires de `detect` (densification des
+  colonnes `category` par `str_col`, copies par règle) et le chunking par lot.
 - **Excel ~1 048 576 lignes** : feuille « Données unifiées » tronquée
   (`max_lignes_donnees_unifiees`, défaut 200 000) ; agrégats/détections sur la
   **totalité** des données.
