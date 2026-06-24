@@ -1,0 +1,161 @@
+"""Rapport d'analyse SYNTHÉTIQUE : décrit les résultats, explique les problèmes
+potentiels ou avérés, et relie les constats entre eux (config ↔ logs ↔ threat intel).
+
+Distingue explicitement :
+- [AVÉRÉ]      : fait lisible directement (état de config, volume de logs) ;
+- [À CONFIRMER]: suspicion (compte hors référentiel, chaîne corrélée, nom voyou…).
+
+Ne conclut JAMAIS à une compromission que les données ne prouvent pas — conforme
+au principe directeur (l'outil signale, le verdict reste humain).
+"""
+from __future__ import annotations
+import pandas as pd
+
+
+def _sev_counts(df):
+    if df is None or df.empty or "severite" not in df.columns:
+        return {}
+    return df["severite"].value_counts().to_dict()
+
+
+def _period(tables):
+    agg = tables.get("agg")
+    if agg is not None and not agg.empty and "bucket" in agg.columns:
+        b = pd.to_datetime(agg["bucket"], errors="coerce").dropna()
+        if len(b):
+            return f"{b.min().date()} → {b.max().date()}"
+    return "n/d"
+
+
+def build_analysis(tables, meta, cfg) -> str:
+    events = tables.get("events")
+    ca = tables.get("config_audit")
+    chains = tables.get("chains")
+    rep = tables.get("reputation")
+    se = tables.get("sources_externes")
+    agg = tables.get("agg")
+    bursts = tables.get("bursts")
+    L: list[str] = []
+
+    def h(t): L.append(t); L.append("")
+
+    h("# RAPPORT D'ANALYSE — SYNTHÈSE")
+    L.append("> L'outil **signale et structure** ; le **verdict reste humain**. "
+             "[AVÉRÉ] = fait constaté ; [À CONFIRMER] = suspicion à valider hors logs.")
+    L.append("")
+
+    # 1. Périmètre
+    h("## 1. Périmètre analysé")
+    L.append(f"- Logs : {meta.get('n_files', 0)} fichier(s), "
+             f"{meta.get('n_rows', 0):,} lignes ({meta.get('dedup', 0):,} doublons retirés).")
+    if meta.get("n_configs"):
+        L.append(f"- Configurations FortiGate (.conf) : {meta['n_configs']} fichier(s).")
+    L.append(f"- Période couverte : {_period(tables)}.")
+    boites = []
+    if events is not None and not events.empty and "boitier" in events.columns:
+        boites = [b for b in events["boitier"].unique().tolist() if b]
+    if boites:
+        L.append(f"- Boîtiers identifiés : {', '.join(map(str, boites))}.")
+        if "inconnu" in boites:
+            L.append("  - ⚠ Des événements sont rattachés à « inconnu » : fichiers sans IP "
+                     "WAN/mgmt du boîtier et sans indice de nom (ex. app-ctrl). Pour un "
+                     "rattachement complet, utiliser le référentiel aux vraies IP (config.local.yaml).")
+    L.append("")
+
+    # 2. État de la configuration (AVÉRÉ)
+    h("## 2. État de la configuration (.conf) — [AVÉRÉ sauf mention]")
+    if ca is None or ca.empty:
+        L.append("- Aucun fichier de configuration importé (ou aucun constat).")
+    else:
+        by_rule = ca.groupby("regle").size().sort_values(ascending=False)
+        for regle, n in by_rule.items():
+            tag = "[À CONFIRMER]" if ("hors référentiel" in regle or "voyou" in regle) else "[AVÉRÉ]"
+            L.append(f"- {tag} {regle} — {n} constat(s).")
+        # explications ciblées
+        joined = " ".join(ca["regle"].tolist())
+        if "WAN" in joined:
+            L.append("  → L'interface d'administration (GUI/SSH) est **joignable depuis Internet** : "
+                     "surface d'attaque directe, cohérente avec un volume de brute-force élevé.")
+        if "trusted-host" in joined:
+            L.append("  → Des comptes admin **acceptent une connexion depuis n'importe quelle IP** "
+                     "(pas de restriction trusted-host) — durcissement recommandé.")
+        if "hors référentiel" in joined:
+            L.append("  → Un compte admin **absent du référentiel** est présent : à vérifier en IAM "
+                     "(peut être un ajout légitime récent — À CONFIRMER, pas une preuve).")
+    L.append("")
+
+    # 3. Activité dans les logs
+    h("## 3. Activité observée dans les logs")
+    if events is None or events.empty:
+        L.append("- Aucun log analysé.")
+    else:
+        sc = _sev_counts(events)
+        ligne = ", ".join(f"{k}={sc[k]}" for k in ["critique", "eleve", "moyen", "faible", "info"] if k in sc)
+        L.append(f"- Événements signalés : {len(events)} ({ligne}).")
+        if agg is not None and not agg.empty and "echecs_login" in agg.columns:
+            tot_fail = int(agg["echecs_login"].sum())
+            tot_ok = int(agg["logins_ok"].sum()) if "logins_ok" in agg.columns else 0
+            L.append(f"- [AVÉRÉ] Authentification admin : {tot_fail:,} échecs de login, "
+                     f"{tot_ok} login(s) réussi(s) sur la période.")
+        # Brute-force réussi (R11)
+        r11 = events[events["regle"].str.contains("potentiellement réussi|après rafale", na=False)] \
+            if "regle" in events.columns else events.iloc[0:0]
+        if not r11.empty:
+            L.append(f"- ⚠ [À CONFIRMER] {len(r11)} **brute-force potentiellement réussi** "
+                     "(succès précédé d'une rafale d'échecs) — à valider d'urgence.")
+        else:
+            L.append("- [AVÉRÉ] **Aucun brute-force réussi détecté** : aucun succès admin précédé "
+                     "d'une rafale d'échecs (le volume d'attaque n'a pas abouti dans les logs fournis).")
+        if bursts is not None and not bursts.empty:
+            L.append(f"- {len(bursts)} rafale(s) d'activité détectée(s) (pics au-dessus du seuil adaptatif).")
+        if chains is not None and not chains.empty:
+            L.append(f"- ⚠ [À CONFIRMER] {len(chains)} chaîne(s) IoC corrélée(s) "
+                     "(accès → compte → exfiltration) — corrélation temporelle, pas une preuve.")
+        else:
+            L.append("- Aucune chaîne IoC (accès → compte → exfiltration) corrélée.")
+    L.append("")
+
+    # 4. Origine des accès externes
+    h("## 4. Origine des accès externes (géo / threat intel)")
+    if se is not None and not se.empty:
+        L.append(f"- {len(se)} IP source externe(s) classées par volume.")
+    if rep is not None and not rep.empty:
+        L.append(f"- ⚠ [AVÉRÉ] {len(rep)} IP ayant touché le pare-feu sont présentes dans une "
+                 "**liste de réputation** (IP déjà connues malveillantes). Présence = signal fort, "
+                 "À CONFIRMER (listes parfois larges).")
+    if (se is None or se.empty) and (rep is None or rep.empty):
+        L.append("- Pas d'enrichissement disponible (ni sources externes, ni listes de réputation).")
+    L.append("")
+
+    # 5. Lecture d'ensemble
+    h("## 5. Lecture d'ensemble")
+    wan = ca is not None and not ca.empty and ca["regle"].str.contains("WAN").any()
+    big_bf = agg is not None and not agg.empty and "echecs_login" in agg.columns and int(agg["echecs_login"].sum()) > 1000
+    known_bad = rep is not None and not rep.empty
+    breach = events is not None and not events.empty and "regle" in events.columns and \
+        events["regle"].str.contains("potentiellement réussi", na=False).any()
+    if wan and big_bf:
+        msg = ("- La **GUI d'administration exposée sur WAN** explique le **volume massif de "
+               "brute-force** observé dans les logs")
+        if known_bad:
+            msg += ", majoritairement depuis des **IP déjà connues malveillantes**"
+        msg += "."
+        L.append(msg)
+    if big_bf and not breach:
+        L.append("- **Aucune compromission avérée** à ce stade : malgré l'attaque, aucun accès "
+                 "réussi corrélé. La menace est sur la **surface d'attaque**, pas (encore) sur un accès obtenu.")
+    if breach:
+        L.append("- ⚠ Signal de **brute-force possiblement abouti** — priorité de vérification (IAM, "
+                 "sessions actives, changements de config récents).")
+    if not (wan or big_bf or known_bad or breach):
+        L.append("- Pas de corrélation forte entre les constats sur ce jeu de données.")
+    L.append("")
+
+    # 6. À confirmer hors logs
+    h("## 6. À confirmer (hors périmètre des logs)")
+    L.append("- Comptes admin hors référentiel : valider via l'IAM FortiCloud / la gestion des accès.")
+    L.append("- Chaînes IoC et brute-force « réussi » : corrélations temporelles, pas des preuves.")
+    L.append("- Listes de réputation : vérifier que l'IP n'est pas un faux positif (CGNAT, cloud partagé).")
+    L.append("")
+    L.append("— Fin de la synthèse. Détails par catégorie dans les autres feuilles / sections.")
+    return "\n".join(L)

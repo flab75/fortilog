@@ -5,8 +5,21 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from . import ingest, normalize, detect, compare, correlate, report, excel, geo
+from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, analysis
 from .validate import validate_config
+
+
+def _emit(out, tables, meta, cfg):
+    """Calcule la synthèse, écrit le classeur Excel + le rapport texte, renvoie (tables, meta)."""
+    rapport = analysis.build_analysis(tables, meta, cfg)
+    meta["analysis"] = rapport
+    xlsx_path = out / "rapport_fortigate.xlsx"
+    excel.write_workbook(str(xlsx_path), tables, cfg, analysis_text=rapport)
+    txt = rapport + "\n\n" + ("=" * 70) + "\n" + report.build_report(tables, meta)
+    (out / "rapport_fortigate.txt").write_text(txt)
+    print(txt)
+    print(f"\n>> Classeur : {xlsx_path}")
+    return tables, meta
 
 TARGET_COLS = ["date", "time", "tz", "eventtime", "logid", "type", "subtype",
                "level", "logdesc", "user", "ui", "method", "srcip", "dstip",
@@ -43,8 +56,32 @@ def run(input_dir, config_path, output_dir):
         raise SystemExit(msg)
     out = Path(output_dir); out.mkdir(parents=True, exist_ok=True)
     files = ingest.list_log_files(input_dir)
+    conf_files = sorted(Path(input_dir).glob("*.conf"))
+    if not files and not conf_files:
+        raise SystemExit(f"Aucun fichier .log ni .conf dans {input_dir}")
+
+    # Audit des fichiers de configuration FortiGate (.conf) — indépendant des logs.
+    def _boitier_for(name):
+        for b, pats in (cfg.get("fichiers_boitier") or {}).items():
+            if any(p in name for p in pats):
+                return b
+        return "inconnu"
+    config_audit = confaudit.audit_files(conf_files, cfg, boitier_map=_boitier_for)
+
     if not files:
-        raise SystemExit(f"Aucun fichier .log dans {input_dir}")
+        # Mode AUDIT CONFIG SEUL : import de .conf sans logs.
+        empty = pd.DataFrame()
+        ref_rows = [{"clé": k, "valeur": str(v)} for k, v in cfg.items()]
+        tables = {"unifie": empty, "events": empty, "chains": empty, "agg": empty,
+                  "bursts": empty, "diff": empty, "security_rating": empty,
+                  "sources_externes": empty, "reputation": empty,
+                  "config_audit": config_audit, "ref": pd.DataFrame(ref_rows)}
+        meta = {"n_files": 0, "n_rows": 0, "dedup": 0,
+                "files": [{"name": p.name, "type": "config", "subtype": "fortigate",
+                           "reconnu": True, "rows": 0} for p in conf_files],
+                "geo_available": False, "reputation_available": False,
+                "n_configs": len(conf_files)}
+        return _emit(out, tables, meta, cfg)
 
     parts, meta_files = [], []
     for f in files:
@@ -140,20 +177,16 @@ def run(input_dir, config_path, output_dir):
         "security_rating": security_rating,
         "sources_externes": sources_ext,
         "reputation": reputation,
+        "config_audit": config_audit,
         "ref": pd.DataFrame(ref_rows),
     }
     meta = {"n_files": len(files), "n_rows": len(full),
             "dedup": full.attrs.get("dedup_removed", 0), "files": meta_files,
             "geo_available": enricher.available,
-            "reputation_available": repdb.available}
+            "reputation_available": repdb.available,
+            "n_configs": len(conf_files)}
 
-    xlsx_path = out / "rapport_fortigate.xlsx"
-    excel.write_workbook(str(xlsx_path), tables, cfg)
-    txt = report.build_report(tables, meta)
-    (out / "rapport_fortigate.txt").write_text(txt)
-    print(txt)
-    print(f"\n>> Classeur : {xlsx_path}")
-    return tables, meta
+    return _emit(out, tables, meta, cfg)
 
 
 def main():

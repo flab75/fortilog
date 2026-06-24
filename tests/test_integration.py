@@ -84,8 +84,34 @@ def test_run_end_to_end_with_geo():
         wb = load_workbook(output_dir / "rapport_fortigate.xlsx")
         assert "Sources externes" in wb.sheetnames
         assert "IP malveillantes" in wb.sheetnames
+        assert "Rapport" in wb.sheetnames
         assert "reputation" in tables
         assert "reputation_available" in meta
+        assert "analysis" in meta and "# RAPPORT D'ANALYSE" in meta["analysis"]
+    finally:
+        shutil.rmtree(input_dir, ignore_errors=True)
+        shutil.rmtree(output_dir, ignore_errors=True)
+
+
+def test_run_config_only():
+    """Import de .conf SANS logs : run() produit l'audit config + feuille Excel."""
+    from fortilog.main import run
+    from openpyxl import load_workbook
+
+    input_dir = Path(tempfile.mkdtemp())
+    output_dir = Path(tempfile.mkdtemp())
+    try:
+        shutil.copy(FIXTURES / "confaudit_compromis.conf", input_dir / "fw.conf")
+        tables, meta = run(str(input_dir), str(CONFIG_PATH), str(output_dir))
+
+        assert "config_audit" in tables
+        assert not tables["config_audit"].empty
+        assert (tables["config_audit"]["severite"] == "critique").any()
+        assert meta["n_configs"] == 1
+
+        wb = load_workbook(output_dir / "rapport_fortigate.xlsx")
+        assert "Audit config" in wb.sheetnames
+        assert "Rapport" in wb.sheetnames
     finally:
         shutil.rmtree(input_dir, ignore_errors=True)
         shutil.rmtree(output_dir, ignore_errors=True)
@@ -199,6 +225,21 @@ def test_real_geo_enrichment_t2(cfg):
     assert row.iloc[0]["srcip_portee"] == "externe"
     assert row.iloc[0]["srcip_pays"] == "GB"
     assert int(row.iloc[0]["logins_echoues"]) > 1000
+
+
+@pytest.mark.slow
+def test_real_config_audit_t1(cfg):
+    """Audit du vrai .conf T1 : constats réels indépendants du référentiel —
+    admins sans trusted-host + accès admin exposé sur WAN."""
+    from fortilog import confaudit
+    require_real_logs(REAL_LOGS_T1)
+    confs = list(REAL_LOGS_T1.glob("FW-*.conf"))
+    if not confs:
+        pytest.skip("Pas de fichier .conf réel dans T1")
+    df = confaudit.audit_files(confs, cfg)
+    assert not df.empty
+    assert df["regle"].str.contains("trusted-host").any()
+    assert df["regle"].str.contains("WAN").any()
 
 
 @pytest.mark.slow

@@ -15,7 +15,10 @@ LIMITES ASSUMÉES :
 - Géo/ASN = contexte d'origine (base locale), ni preuve ni absolution ; qualité = celle
   de la base fournie ; sans base, seule la portée interne/externe est connue.
 - IP en liste de réputation = signal fort mais À CONFIRMER : les listes peuvent être
-  larges (CIDR entiers), datées ou inclure des IP partagées (CGNAT, cloud)."""
+  larges (CIDR entiers), datées ou inclure des IP partagées (CGNAT, cloud).
+- Audit config (.conf) = constats sur l'état de la configuration (compte hors
+  référentiel, admin sans trusted-host, accès exposé…) ; un compte récent légitime
+  peut être hors référentiel — à confirmer, jamais une preuve de compromission."""
 
 
 def build_report(tables, meta) -> str:
@@ -35,7 +38,19 @@ def build_report(tables, meta) -> str:
         else:
             label = "(reconnu)"
         L.append(f"  - {f['name']}: type={f['type']}/{f['subtype']} {label} | {f['rows']} lignes")
+    if meta.get("n_configs"):
+        L.append(f"Fichiers de configuration audités (.conf) : {meta['n_configs']}")
     L.append("")
+    ca = tables.get("config_audit")
+    if ca is not None and not ca.empty:
+        L.append(f"AUDIT CONFIGURATION (.conf) — constats : {len(ca)} (SUSPICION / à confirmer)")
+        counts = ca["severite"].value_counts()
+        for sev in ["critique", "eleve", "moyen", "faible", "info"]:
+            if sev in counts:
+                L.append(f"  {sev:9}: {counts[sev]}")
+        for _, r in ca.iterrows():
+            L.append(f"    [{r['severite']}] {r['boitier']} | {r['regle']} | {r['detail']}")
+        L.append("")
     agg = tables["agg"]
     if agg is not None and not agg.empty:
         L.append("AGRÉGATS PAR BOÎTIER / JOUR :")

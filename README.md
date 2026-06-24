@@ -45,16 +45,20 @@ python -m fortilog.main --input ./logs --config config.yaml --output ./rapport
 - `--config` : référentiel « du normal » + paramètres (voir `config.yaml`).
 - `--output` : produit `rapport_fortigate.txt` et `rapport_fortigate.xlsx`.
 
-## Sorties (classeur, 9 feuilles)
+## Sorties (classeur, 11 feuilles)
+0. `Rapport` — **synthèse** qui décrit les résultats et explique les problèmes, en distinguant
+   **[AVÉRÉ]** (état de config, volumes) de **[À CONFIRMER]** (suspicions). Aussi en tête du
+   rapport texte et dans l'onglet « Rapport » de l'UI Streamlit.
 1. `Tableau de bord` — agrégats par boîtier/jour (échecs, logins OK, lockouts, SSL-VPN, passwd_invalid, IP uniques).
 2. `Evenements signales` — événements à risque, colorés par sévérité (info→critique), enrichis portée/pays/ASN/réputation.
 3. `Chaines suspectes` — séquences corrélées (accès→compte→exfiltration) — **à confirmer**.
 4. `IP malveillantes` — sources présentes dans une liste de réputation (threat intel) — **à confirmer**.
-5. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
-6. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
-7. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
-8. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
-9. `Referentiel` — la configuration du « normal » utilisée.
+5. `Audit config` — constats sur les `.conf` FortiGate importés (comptes, accès, automation) — **à confirmer**.
+6. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
+7. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
+8. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
+9. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
+10. `Referentiel` — la configuration du « normal » utilisée.
 
 ## Détection (grille d'audit, 12 règles)
 - Login admin réussi depuis source **externe** (critique) / compte hors référentiel (élevé).
@@ -115,6 +119,34 @@ python -m fortilog.main --input ./logs --config config.yaml --output ./rapport
   → une IP **interne** n'est jamais signalée (évite le faux positif classique).
 - **À CONFIRMER** : présence en liste = signal fort, pas une preuve (listes parfois larges/datées).
 
+## Audit de configuration FortiGate (.conf)
+Importez un ou plusieurs **backups de configuration** (`.conf`) — en CLI (déposez-les
+dans le dossier `--input`) ou via l'UI Streamlit (zone de dépôt `.conf`). L'outil parse
+le CLI FortiGate et vérifie des **indices de compromission**, comparés au référentiel :
+- Compte admin **hors référentiel** (`config system admin`/`sso-admin`) → critique (SUSPICION).
+- Admin **sans trusted-host** (joignable de toute IP) → élevé.
+- Nom d'admin **voyou** (motif) → élevé ; **automation** `cli-script`/`webhook` (persistance) → élevé.
+- Accès admin **exposé** : `telnet`, ou GUI/SSH sur interface `role wan` → élevé.
+- Config **sauvegardée par un compte hors référentiel** (en-tête `user=`) → moyen.
+
+On peut analyser des `.conf` **seuls** (sans logs). Tout est marqué **à confirmer** :
+un admin légitime récent peut être hors référentiel — ce n'est jamais une preuve.
+
+## Comparaison de deux configurations (.conf)
+Compare une config **de référence / validée** à une config **actuelle / suspecte** : ce qui a
+**changé** (objets ajoutés / supprimés / modifiés : admins, règles firewall, VPN, interfaces,
+routes, automation, users…), **par qui** et **quand**.
+```bash
+python -m fortilog.confdiff reference.conf actuel.conf --logs ./logs    # --all pour toutes les sections
+```
+- **« par qui / quand »** vient des **logs** (events « Object attribute configured » :
+  `cfgobj`/`user`/`action`/timestamp). Le `.conf` seul ne donne que qui a *sauvegardé* le backup
+  (en-tête `user=`). Hors fenêtre de logs → « inconnu » (jamais inventé).
+- Hashs/secrets (mots de passe, clés, psksecret) → **« (valeur masquée) »**.
+- Aussi dans l'UI Streamlit : section **« 🔁 Comparer deux configurations »** (les logs déposés
+  servent à l'attribution).
+- Un écart de config n'est **pas** une compromission — à confirmer.
+
 ## Format & parsing
 - `clé="valeur"` (espaces gérés). **Guillemets et backslash échappés** par FortiGate
   (`\"`, `\\`) à l'intérieur d'une valeur sont correctement déséchappés sans décaler les
@@ -145,7 +177,7 @@ python -m fortilog.main --input ./logs --config config.yaml --output ./rapport
 
 ## Tests
 
-Suite pytest versionnée : **127 tests rapides** + **8 tests sur vrais logs**.
+Suite pytest versionnée : **156 tests rapides** + **8 tests sur vrais logs**.
 
 ```bash
 # Tests rapides (fixtures synthétiques)
@@ -165,6 +197,10 @@ Couverture des tests :
 - **detect.py** : 28 cas (R1-R9 pos/nég, 6 cas R10a/b/c, 3 cas R11 brute-force, 2 cas R12 horaires).
 - **geo.py** : 22 cas (portée, lookup CSV/TSV/CIDR, enrichissement géo + réputation,
   dégradation, top sources, exclusion infra, exclusion bogon interne).
+- **confaudit.py** : 11 cas (parsing CLI, C1-C6, config propre sans critique, tri par sévérité).
+- **analysis.py** : 6 cas (sections, corrélation WAN↔brute-force, alerte brèche, mode config-seul, vide).
+- **confdiff.py** : 10 cas (ajout/suppr/modif admin, nouvelle règle, param global, masquage secret,
+  attribution qui/quand depuis logs, absence de logs, en-tête « sauvé par »).
 - **compare.py** : 5 cas (agrégats, rafales, différentiel).
 - **correlate.py** : 11 cas (chaîne complète, bénin, activité admin légitime, ordre,
   fenêtre trop courte, mapping d'étapes, IP effective).

@@ -30,9 +30,12 @@ fortilog/
 │   ├── detect.py    # run_detection VECTORISÉE (masques pandas) -> événements + sévérité
 │   ├── compare.py   # aggregate (jour/heure), detect_bursts (adaptatif), diff_entities (6 entités)
 │   ├── correlate.py # correlate_chains : chaînes IoC ordonnées (accès→compte→exfil) par acteur/IP
-│   ├── geo.py       # enrichissement géo/ASN HORS-LIGNE + portée interne/externe + top sources
-│   ├── report.py    # build_report (texte) + rappel des limites
-│   ├── excel.py     # write_workbook (xlsxwriter, 9 feuilles)
+│   ├── geo.py       # enrichissement géo/ASN HORS-LIGNE + portée + top sources + réputation
+│   ├── confaudit.py # parse + audit de compromission des .conf FortiGate (comptes, accès, automation)
+│   ├── confdiff.py  # comparaison 2 .conf (ajout/suppr/modif) + attribution qui/quand via logs ; CLI
+│   ├── analysis.py  # build_analysis : rapport de SYNTHÈSE (décrit/explique, [AVÉRÉ]/[À CONFIRMER])
+│   ├── report.py    # build_report (texte détaillé) + rappel des limites
+│   ├── excel.py     # write_workbook (xlsxwriter, 11 feuilles, « Rapport » en 1re)
 │   ├── validate.py  # validate_config : vérifie le config.yaml au démarrage (CIDR, regex, seuils)
 │   ├── ui_helpers.py # prepare_events/metrics/agg/bursts/diff — helpers testables hors-UI
 │   └── main.py      # run(input, config, output) + CLI argparse
@@ -52,10 +55,46 @@ fortilog/
 ```
 
 ## Flux (`main.run`)
-**validate_config** → ingest → parse → concat → build_timestamp → assign_boitier →
-deduplicate → (catégorisation mémoire) → detect (R1-R12) → **correlate** → **enrichissement
-géo + réputation** (events + top sources externes + IP malveillantes) → aggregate + bursts +
-diffs → report + excel.
+**validate_config** → **audit .conf** (confaudit) → ingest → parse → concat → build_timestamp →
+assign_boitier → deduplicate → (catégorisation mémoire) → detect (R1-R12) → **correlate** →
+**enrichissement géo + réputation** → aggregate + bursts + diffs → report + excel.
+`run()` accepte logs ET/OU `.conf` ; **mode audit-config seul** si aucun log fourni
+(import de configs uniquement, p.ex. depuis l'UI Streamlit). `_emit()` calcule la
+**synthèse** (`analysis.build_analysis`), l'écrit en 1re feuille Excel « Rapport » +
+en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamlit « Rapport »).
+
+## Comparaison de configurations (`confdiff.py`)
+- Compare une config **de référence/validée** à une config **actuelle** : objets
+  **ajoutés / supprimés / modifiés** par section sensible (admins, sso, api-user, firewall
+  policy, vpn, interface, route, dns, automation, user…). `all_sections=True` pour tout.
+- **Attribution « par qui / quand »** : corrélation avec les logs (`cfgobj`/`cfgpath`/`user`/
+  `action`/timestamp des events « Object attribute configured »). Le `.conf` seul ne porte que
+  qui a *sauvegardé* le backup (en-tête `user=`). Hors fenêtre de logs → « inconnu » (jamais inventé).
+- Secrets/hashs (password, psksecret, private-key…) → **« (valeur masquée) »**.
+- Accès : `python -m fortilog.confdiff ref.conf actuel.conf [--logs DIR] [--all]` ; section
+  « 🔁 Comparer deux configurations » dans l'UI Streamlit. **Hors `main.run`** (outil dédié).
+- Garde-fou : un écart de config n'est pas une compromission (à confirmer).
+
+## Rapport de synthèse (`analysis.py`)
+- Décrit les résultats et **explique** les problèmes, en distinguant **[AVÉRÉ]** (état de
+  config, volumes de logs) de **[À CONFIRMER]** (compte hors référentiel, chaîne, nom voyou).
+- **Lecture d'ensemble** : relie les constats (GUI exposée sur WAN ↔ volume de brute-force ↔
+  IP en réputation) et conclut explicitement « aucune compromission avérée » quand c'est le cas
+  (jamais de conclusion non prouvée). Data-driven (compte les sévérités, règles, IP, échecs…).
+
+## Audit de configuration FortiGate (`confaudit.py`)
+- Parse le CLI FortiGate (`config/edit/set/next/end`) en arbre, puis applique une grille
+  ANCRÉE sur le format réel (jamais inventée), comparée au référentiel `config.yaml` :
+  - **C1** compte admin (`system admin`/`sso-admin`) hors `admins_connus` → critique (SUSPICION).
+  - **C2** admin sans `trusthost` (joignable de toute IP) → élevé.
+  - **C3** nom d'admin matchant `comptes_suspects_regex` → élevé (SUSPICION).
+  - **C4** `automation-action` de type `cli-script`/`webhook` (persistance/exfil) → élevé.
+  - **C5** `allowaccess` avec `telnet`, ou `http/https/ssh` sur interface `role wan` → élevé.
+  - **C6** config sauvée par un compte hors référentiel (en-tête `user=`) → moyen.
+- Sortie : table `config_audit` → feuille Excel « Audit config » + section rapport.
+- **Garde-fou** : tout est SUSPICION/à confirmer (un admin légitime récent peut être hors
+  référentiel). Vérifié sur vrais .conf : 0 admin voyou, mais admins sans trusthost + **GUI
+  admin exposé sur WAN** (corrèle avec le brute-force massif observé dans les logs).
 
 ## Conventions
 - **Lancement CLI :** `python -m fortilog.main --input ./logs --config config.yaml --output ./rapport`.
@@ -171,7 +210,13 @@ externe » ne s'applique qu'aux accès **admin**.
 - **Inconnu** : tout autre type → parsing générique + marquage "(NON RECONNU)".
 
 ## État vérifié (tests réellement passés)
-- **Suite pytest : 127 tests rapides + 8 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
+- **Suite pytest : 156 tests rapides + 8 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
+- **Comparaison config** vérifiée sur vrais .conf : 127 écarts T1↔T2 ; attribution réelle
+  (ex. « AdminHMBM modifié par AdminLGS le 2026-06-22 11:26 ») ; hashs masqués.
+- **Rapport de synthèse** vérifié sur vrai T1 : relie GUI exposée WAN ↔ 128 422 échecs de login
+  ↔ 4 472 IP en réputation, conclut « aucune compromission avérée » (aucun brute-force abouti).
+- **Audit .conf** : sur les vrais backups, 0 admin hors référentiel ; 3 admins sans trusthost +
+  GUI/SSH exposé sur WAN (constats réels, expliquent la surface d'attaque du brute-force).
 - **R11 brute-force réussi** : 0 alerte sur vrais logs (aucune brèche externe ; admin interne
   non faux-positivé). Fixtures : 6 échecs→succès externe = critique ; 2 échecs = rien.
 - **Threat intel** : 4 455 IP attaquantes des vrais logs présentes dans FireHOL L1 ; bug du
