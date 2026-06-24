@@ -93,14 +93,16 @@ def run(input_dir, config_path, output_dir, ref_conf=None):
                            "reconnu": reconnu, "rows": len(df)})
         parts.append(df)
     full = pd.concat(parts, ignore_index=True)
+    del parts  # libère les frames par fichier (évite le doublement transitoire au concat)
 
     full["timestamp"] = normalize.build_timestamp(full)
     full["boitier"] = normalize.assign_boitier(full, cfg.get("boitiers", {}), cfg.get("fichiers_boitier"))
     full = normalize.deduplicate(full)
 
-    # Optimisation mémoire : colonnes à faible cardinalité -> category
-    for c in ["type", "subtype", "level", "logdesc", "action", "status",
-              "reason", "boitier", "source_file"]:
+    # Optimisation mémoire : colonnes à faible cardinalité -> category (valeurs inchangées)
+    for c in ["type", "subtype", "level", "logdesc", "action", "status", "reason",
+              "boitier", "source_file", "method", "tz", "tunneltype", "direction",
+              "appcat", "apprisk"]:
         if c in full.columns:
             full[c] = full[c].astype("category")
 

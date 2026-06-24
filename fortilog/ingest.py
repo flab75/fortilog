@@ -63,16 +63,21 @@ def detect_type(file: str | Path, sample: int = 200) -> tuple[str, str, bool]:
 
 
 def load_file(path) -> pd.DataFrame:
-    """Parse un fichier de log en DataFrame, réduit aux colonnes utiles (TARGET_COLS)."""
-    keep = set(TARGET_COLS)
-    recs = []
+    """Parse un fichier de log en DataFrame, réduit aux colonnes utiles (TARGET_COLS).
+
+    Construction COLONNAIRE (dict de listes) plutôt qu'une liste de dicts : évite de
+    matérialiser N dictionnaires de ~45 clés en même temps que le DataFrame (pic mémoire
+    de parsing ~4-5× plus bas sur les gros fichiers)."""
+    cols: dict[str, list] = {k: [] for k in TARGET_COLS}
+    appenders = [(k, cols[k].append) for k in TARGET_COLS]  # bind des .append (boucle chaude)
     with open(path, errors="replace") as fh:
         for line in fh:
             line = line.strip()
             if not line:
                 continue
             d = parse_line(line)
-            recs.append({k: d.get(k, "") for k in keep})  # colonnes utiles seulement
-    df = pd.DataFrame.from_records(recs, columns=TARGET_COLS)
+            for k, append in appenders:
+                append(d.get(k, ""))
+    df = pd.DataFrame(cols, columns=TARGET_COLS)
     df["source_file"] = Path(path).name
     return df
