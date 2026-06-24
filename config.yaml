@@ -1,0 +1,87 @@
+# Référentiel "du normal" et paramètres — éditable sans toucher au code.
+# Valeurs pré-remplies = vérifiées dans les exports analysés.
+
+boitiers:
+  T1: { wan: 203.0.113.1, mgmt: 10.10.1.1 }
+  T2: { wan: 198.51.100.1,  mgmt: 10.20.1.1 }
+
+admins_connus: [adminA, adminB, adminA_bk]
+
+utilisateurs_vpn_actifs: [vpnuser1, vpnuser2, vpnuser3]
+groupes_vpn_legitimes: ["VPN GroupA", "VPN GroupB", "VPN GroupC"]
+
+utilisateurs_locaux:
+  T1: [guest, localadmin, user1, user2, vpnuser3, vpnuser1, vpnuser2,
+       user3, user4, user5, user6, user7, user8, user9, user10]
+  T2: [guest, localadmin, user1]
+
+plages_internes:
+  - 10.10.1.0/24       # LAN admin
+  - 10.212.134.0/24    # pool VPN
+  - 192.168.180.0/22   # LAN postes T1
+  - 10.20.0.0/16       # T2
+  - 10.10.0.0/16       # VLAN internes T1
+
+destinations_legitimes:
+  ipsec_peers: [203.0.113.1, 198.51.100.1]
+  logging_forticloud: [154.52.10.126, 154.52.10.143]
+  dns_fortiguard: [96.45.45.45, 96.45.46.46]
+
+rafales:
+  fenetre_minutes: 60
+  pas_minutes: 5
+  mode_seuil: adaptatif      # adaptatif | fixe
+  facteur_mediane: 3.0       # rafale si taux >= facteur * mediane
+  seuil_fixe_optionnel: null # utilisé seulement si mode_seuil = fixe
+
+# R11 — brute-force potentiellement réussi : un login admin RÉUSSI précédé d'au
+# moins `seuil_echecs` échecs sur la même IP/compte dans `fenetre_minutes`. SUSPICION.
+bruteforce:
+  fenetre_minutes: 60
+  seuil_echecs: 5
+
+# R12 — horaires inhabituels : login admin RÉUSSI hors plage ouvrée -> SUSPICION
+# comportementale (faible). Ajuster `debut`/`fin` au rythme réel de l'organisation.
+horaires_ouvres:
+  debut: 7           # heure de début incluse (0-23)
+  fin: 20            # heure de fin exclue (0-23)
+  alerte_weekend: true
+
+# Corrélation temporelle (chaîne IoC) — reconstitue la séquence
+# accès -> compte -> exfiltration par un même acteur/IP. SUSPICION, pas preuve.
+correlation:
+  fenetre_minutes: 60                          # durée max entre 1re et dernière étape
+  sequence_requise: [ACCES, COMPTE, EXFILTRATION]  # étapes ordonnées requises
+
+# Motifs heuristiques de comptes potentiellement voyous (SUSPICION, pas preuve)
+comptes_suspects_regex:
+  - '(?i)^admin[-_]?\d+$'        # admin-1, admin_123
+  - '(?i)^(access|support|test|backup|service)$'
+  - '@(tutamail|protonmail|tutanota|mail\.io)\.'   # mail anonyme
+  - '@forticloud\.com'
+
+# Enrichissement géo/ASN HORS-LIGNE (P6, optionnel). Bases locales à fournir
+# (license-clean : DB-IP Lite Country CSV + iptoasn ip2asn-v4.tsv). Chemins absolus.
+# Laisser à null = pas d'enrichissement géo (la PORTÉE interne/externe reste calculée).
+geo_db_path: data/geo/dbip-country-lite.csv  # DB-IP Lite : start_ip,end_ip,country_code
+asn_db_path: data/geo/ip2asn-v4.tsv          # iptoasn : start<TAB>end<TAB>asn<TAB>country<TAB>org
+top_sources_externes: 50   # nombre d'IP externes classées dans la feuille dédiée
+
+# Listes de réputation IP HORS-LIGNE (threat intel, optionnel). Format : un CIDR ou
+# une IP par ligne, '#' = commentaire (FireHOL/.netset/.ipset). License-clean uniquement.
+# Une présence en liste est un SIGNAL FORT mais reste à confirmer (faux positifs possibles).
+reputation_lists:
+  - { nom: "FireHOL L1", path: data/geo/firehol_level1.netset }
+  # - { nom: "abuse.ch FeodoTracker", path: data/geo/feodo.ipset }
+
+# Liste blanche contrôle applicatif (UTM/app-ctrl) : hostnames à ne pas signaler.
+# proxy-safebrowsing.googleapis.com = tunnel CONNECT Safe Browsing Apple/Google (légitime).
+app_ctrl_whitelist:
+  - proxy-safebrowsing.googleapis.com
+
+# Indice optionnel : rattacher un fichier à un boîtier quand l'IP du boîtier
+# n'apparait pas dans le log (cas des logs event/user, event/vpn, traffic/forward).
+# Correspondance par sous-chaîne du nom de fichier. Laisser vide si inconnu.
+fichiers_boitier:
+  T1: ["FW-SITE-A", "memory-event-vpn", "memory-event-user", "memory-traffic-forward"]
+  T2: ["FW-SITE-B"]

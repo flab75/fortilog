@@ -1,0 +1,1 @@
+date=2026-06-23 time=15:30:44 eventtime=1782221444392261430 tz="+0200" logid="0100032096" type="event" subtype="system" level="notice" vd="root" logdesc="Log file downloaded from GUI" user="adminA" ui="GUI(10.10.1.62)" msg="User adminA has downloaded the event logs from GUI(10.10.1.62)"

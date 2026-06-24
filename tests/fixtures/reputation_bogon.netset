@@ -1,0 +1,4 @@
+# Liste contenant un bogon interne (comme FireHOL inclut 10/8) — pour tester
+# que les IP INTERNES ne sont jamais signalées comme malveillantes.
+10.10.1.0/24
+85.11.187.0/24

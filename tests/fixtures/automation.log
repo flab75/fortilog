@@ -1,0 +1,1 @@
+date=2026-06-23 time=15:30:09 eventtime=1782221408545063410 tz="+0200" logid="0100046600" type="event" subtype="system" level="notice" vd="root" logdesc="Automation stitch triggered" stitch="Security Rating Notification" trigger="Security Rating Notification" stitchaction="FortiExplorer Notification" from="log" msg="stitch:Security Rating Notification is triggered."

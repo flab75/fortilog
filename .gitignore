@@ -1,0 +1,16 @@
+# Bases géo/ASN locales (volumineuses, sous licence, régénérables — cf. docs/PROCEDURE_BASES_GEO.md)
+data/geo/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Config RÉEL local (vraies données d'infra). Le config.yaml versionné est anonymisé.
+config.local.yaml
+
+# OS
+.DS_Store
+
+# Sorties d'analyse générées (le dossier de rapport par défaut)
+/rapport/

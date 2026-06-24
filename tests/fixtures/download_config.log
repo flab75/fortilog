@@ -1,0 +1,1 @@
+date=2026-06-23 time=15:00:01 eventtime=1782219601000000000 tz="+0200" logid="0100044544" type="event" subtype="system" level="notice" vd="root" logdesc="Admin performed an action from GUI" user="adminA" ui="GUI(10.10.1.62)" action="download" cfgtid=0 msg="Admin adminA downloaded the configuration from GUI(10.10.1.62)"

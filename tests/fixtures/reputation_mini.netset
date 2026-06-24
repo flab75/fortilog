@@ -1,0 +1,5 @@
+# Mini-liste de réputation de test (format FireHOL .netset)
+# Couvre volontairement une plage d'attaquant réelle observée dans les logs T2.
+85.11.187.0/24
+45.134.26.0/24
+203.0.113.10

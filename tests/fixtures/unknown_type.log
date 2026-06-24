@@ -1,0 +1,2 @@
+date=2026-06-23 time=12:00:01 eventtime=1782208801000000000 tz="+0200" logid="9999999999" type="exotic" subtype="foobar" level="information" vd="root" logdesc="Something unknown" msg="This type is not in KNOWN_TYPES"
+date=2026-06-23 time=12:00:02 eventtime=1782208802000000000 tz="+0200" logid="9999999998" type="exotic" subtype="foobar" level="notice" vd="root" logdesc="Another unknown" msg="Still unknown type"

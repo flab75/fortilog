@@ -1,0 +1,190 @@
+# fortilog — Analyseur de logs FortiGate (détection de compromission)
+
+Analyse des exports de logs FortiCloud/FortiGate (`clé="valeur"`) : détection
+automatique du type, parsing, grille d'audit de compromission, comparaison
+multi-dates / multi-boîtiers, sortie **rapport texte** + **classeur Excel**.
+
+> **Principe :** l'outil **signale et structure** ; le **verdict reste humain**.
+> Il ne produit aucune conclusion que les logs ne permettent pas (certaines
+> vérifications exigent l'IAM FortiCloud ou la configuration du boîtier).
+
+## Prérequis
+- Python 3.11+
+- `pip install pandas xlsxwriter pyyaml openpyxl streamlit`
+
+  > **Note :** `xlsxwriter` et `openpyxl` sont tous les deux requis. Vérifier
+  > avec `pip show xlsxwriter openpyxl` que les deux sont présents dans
+  > l'environnement utilisé par Streamlit.
+
+## Configuration (référentiel)
+
+Le `config.yaml` versionné est **anonymisé** (valeurs d'exemple : `adminA`, IP de
+documentation `203.0.113.x`, chemins relatifs). Pour analyser de **vrais** logs,
+copiez-le en `config.local.yaml` (déjà dans `.gitignore`) et renseignez vos vraies
+valeurs (admins, IP WAN, utilisateurs, chemins absolus des bases). Puis :
+```bash
+python -m fortilog.main --input ./logs --config config.local.yaml --output ./rapport
+```
+
+## Usage
+
+### Interface graphique (Streamlit)
+```bash
+streamlit run app.py
+```
+Ouvre un navigateur : déposez vos fichiers `.log`, choisissez un `config.yaml`
+optionnel, cliquez **Lancer l'analyse**. Les résultats s'affichent en onglets
+(événements signalés colorés, tableau de bord, rafales, différentiels) et le
+rapport `.xlsx` est téléchargeable directement.
+
+### Ligne de commande (CLI)
+```bash
+python -m fortilog.main --input ./logs --config config.yaml --output ./rapport
+```
+- `--input` : dossier contenant les fichiers `.log` (un ou plusieurs).
+- `--config` : référentiel « du normal » + paramètres (voir `config.yaml`).
+- `--output` : produit `rapport_fortigate.txt` et `rapport_fortigate.xlsx`.
+
+## Sorties (classeur, 9 feuilles)
+1. `Tableau de bord` — agrégats par boîtier/jour (échecs, logins OK, lockouts, SSL-VPN, passwd_invalid, IP uniques).
+2. `Evenements signales` — événements à risque, colorés par sévérité (info→critique), enrichis portée/pays/ASN/réputation.
+3. `Chaines suspectes` — séquences corrélées (accès→compte→exfiltration) — **à confirmer**.
+4. `IP malveillantes` — sources présentes dans une liste de réputation (threat intel) — **à confirmer**.
+5. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
+6. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
+7. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
+8. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
+9. `Referentiel` — la configuration du « normal » utilisée.
+
+## Détection (grille d'audit, 12 règles)
+- Login admin réussi depuis source **externe** (critique) / compte hors référentiel (élevé).
+- Brute-force sur **compte valide** (`passwd_invalid`, élevé) vs compte inexistant.
+- Tunnel **SSL-VPN** établi hors référentiel (critique).
+- **Création/modif** de compte admin/SSO/API (Add=élevé ; auteur inconnu=critique).
+- Nom de compte **potentiellement voyou** (motif jetable/mail anonyme — SUSPICION).
+- **Exfiltration** : téléchargement de config/logs via GUI.
+- **Réseau** : sortie boîtier vers destination non listée ; accès pool VPN → management.
+- **UTM/app-ctrl** : application bloquée par FortiGate (élevé) ; `apprisk="critical"` non bloquée
+  hors whitelist (moyen, SUSPICION) ; catégorie Proxy hors whitelist (élevé). Whitelist configurable
+  (`app_ctrl_whitelist`) — exclut par défaut `proxy-safebrowsing.googleapis.com` (Safe Browsing).
+- **Brute-force potentiellement réussi** : login admin réussi précédé d'≥ N échecs (défaut 5) sur la
+  même IP/compte dans une fenêtre (défaut 60 min) → critique (source externe) / élevé (interne).
+  Paramétrable (`bruteforce.seuil_echecs`, `bruteforce.fenetre_minutes`). SUSPICION, pas une preuve.
+- **Horaires inhabituels** : login admin réussi hors plage ouvrée (`horaires_ouvres`, défaut 7h-20h)
+  ou le week-end → faible (SUSPICION comportementale, tunable au rythme de l'organisation).
+
+## Types de logs UTM
+- `utm/app-ctrl` : analysé par les règles R10.
+- `utm/ips`, `utm/webfilter`, `utm/dns`, `utm/antivirus` : reconnus, marqués "(sans règles dédiées)",
+  parsing générique. Des exemples réels de ces types sont nécessaires avant d'écrire des règles dédiées.
+- `event/security-rating` : bilan de durcissement FortiGate — intégré au rapport texte (section
+  **BILAN HARDENING**), pas une détection de compromission, pas de feuille Excel.
+
+## Corrélation temporelle (chaînes IoC)
+- Reconstitue la **séquence ordonnée** `accès → création/modif de compte → exfiltration`
+  par un même **acteur** ou une même **IP**, dans une fenêtre paramétrable (défaut 1 h,
+  `correlation.fenetre_minutes`). Une chaîne complète est marquée **critique**.
+- Pour éviter le bruit, une chaîne ne démarre que sur un **accès anormal** (login
+  externe/hors-référentiel, VPN hors-référentiel) ; l'activité admin légitime de
+  routine n'en génère pas.
+- **Garde-fou** : une chaîne est une **corrélation temporelle**, jamais une preuve —
+  toujours affichée « à confirmer ».
+
+## Enrichissement géo/ASN (hors-ligne, optionnel)
+- **Portée** de chaque IP source (interne / externe / réservé) — calculée **sans aucune base**,
+  d'après `plages_internes`. Toujours disponible.
+- **Pays / ASN / organisation** des IP externes — uniquement si des **bases locales** sont
+  fournies dans `config.yaml` :
+  - `geo_db_path` : DB-IP Lite **Country CSV** (`start_ip,end_ip,country`, licence CC-BY-4.0).
+  - `asn_db_path` : iptoasn **ip2asn-v4.tsv** (`start end asn country org`, domaine public).
+  - **100 % hors-ligne**, aucune dépendance ajoutée. Ne pas utiliser MaxMind GeoLite2 (EULA/compte).
+  - **Téléchargement des bases : voir [docs/PROCEDURE_BASES_GEO.md](docs/PROCEDURE_BASES_GEO.md).**
+- **Top sources externes** : classe les IP externes par volume (révèle les brute-force
+  `name_invalid` non signalés par les règles), en **excluant l'infrastructure connue**
+  (WAN/mgmt des boîtiers, peers/DNS légitimes).
+- **Sans base** : la portée reste calculée, les colonnes pays/ASN sont vides + mention honnête.
+  Aucun pays/ASN n'est jamais inventé. La géo est du **contexte**, ni preuve ni absolution.
+
+## Listes de réputation (threat intel, hors-ligne, optionnel)
+- Marque les IP sources présentes dans des **listes d'IP malveillantes connues** (`reputation_lists`
+  dans `config.yaml` : `[{nom, path}]`), au format CIDR/`.netset`/`.ipset` (FireHOL, abuse.ch…).
+  License-clean uniquement. Réutilise le moteur de plages de la géo.
+- Sortie : feuille **« IP malveillantes »** + section rapport + colonne `srcip_reputation` sur les
+  événements. Sur les vrais logs, **4 455 IP attaquantes** sont dans FireHOL Level 1.
+- **Matching externe uniquement** : les listes type FireHOL incluent les bogons (10/8, 192.168/16…)
+  → une IP **interne** n'est jamais signalée (évite le faux positif classique).
+- **À CONFIRMER** : présence en liste = signal fort, pas une preuve (listes parfois larges/datées).
+
+## Format & parsing
+- `clé="valeur"` (espaces gérés). **Guillemets et backslash échappés** par FortiGate
+  (`\"`, `\\`) à l'intérieur d'une valeur sont correctement déséchappés sans décaler les
+  champs suivants (vérifié sur 806 064 lignes réelles).
+
+## Comparaison
+- Agrégats **jour** (défaut) ou **heure**.
+- **Rafales** : fenêtre glissante (défaut 1 h), seuil **adaptatif** (≥ facteur × médiane) ou fixe — paramétrable dans `config.yaml`.
+- **Différentiel** sur 6 entités (priorité 1→3) ; Prio 3 (IP d'attaque, noms ciblés) résumées en compteurs.
+
+## Référentiel & rattachement boîtier
+- Les exports ne contiennent pas de `devname` → le boîtier est déduit par **IP**
+  (WAN/mgmt). Pour les logs sans IP du boîtier (event/user, event/vpn,
+  traffic/forward), un **indice par nom de fichier** (`fichiers_boitier`) permet
+  le rattachement. Sinon : `inconnu` (comportement honnête, pas de devinette).
+- Règle VPN : les utilisateurs VPN viennent d'IP résidentielles dynamiques →
+  référence = **user + groupe + pool**, jamais l'IP source. La détection
+  « source externe » ne s'applique qu'aux accès **admin**.
+
+## Performance & limites (mesuré)
+- ~0,6 s/Mo ; **pic mémoire ≈ 9× la taille d'entrée** (118 Mo → ~1,1 Go, 73 s).
+- Pour de **très gros volumes** (> ~300 Mo cumulés sur peu de RAM) : traiter par
+  **batches** (par jour ou par boîtier).
+- Excel plafonne à ~1 048 576 lignes → la feuille `Donnees unifiees` est
+  **tronquée** (paramètre `max_lignes_donnees_unifiees`, défaut 200 000) ; les
+  **agrégats et détections portent sur la TOTALITÉ** des données.
+- Type de log inconnu → parsing générique + marquage, **jamais** d'analyse inventée.
+
+## Tests
+
+Suite pytest versionnée : **127 tests rapides** + **8 tests sur vrais logs**.
+
+```bash
+# Tests rapides (fixtures synthétiques)
+python -m pytest tests/ --ignore=tests/fixtures -m "not slow"
+
+# Tests sur vrais logs (nécessite les exports dans /path/to/logs/)
+python -m pytest tests/ --ignore=tests/fixtures -m "slow"
+
+# Tous les tests
+python -m pytest tests/ --ignore=tests/fixtures
+```
+
+Couverture des tests :
+- **parse.py** : 12 cas (quotées/espaces, mixtes, vide, ligne réelle, échappements `\"`/`\\`).
+- **ingest.py** : 8 cas (chaque type connu + inconnu + UTM générique, listage).
+- **normalize.py** : 6 cas (timestamp, boîtier par IP/fichier/inconnu, dédup).
+- **detect.py** : 28 cas (R1-R9 pos/nég, 6 cas R10a/b/c, 3 cas R11 brute-force, 2 cas R12 horaires).
+- **geo.py** : 22 cas (portée, lookup CSV/TSV/CIDR, enrichissement géo + réputation,
+  dégradation, top sources, exclusion infra, exclusion bogon interne).
+- **compare.py** : 5 cas (agrégats, rafales, différentiel).
+- **correlate.py** : 11 cas (chaîne complète, bénin, activité admin légitime, ordre,
+  fenêtre trop courte, mapping d'étapes, IP effective).
+- **validate.py** : config valide + erreurs distinctes (CIDR, IP, regex, seuils, corrélation,
+  whitelist app-ctrl).
+- **ui_helpers.py** : tri sévérité, métriques, chaînes, formatage timestamps, couleurs.
+- **intégration** : scénario compromission (≥3 critiques), scénario bénin (0 FP),
+  parsing vrais logs T1/T2, détection sur vrai fichier event/system, whitelist app-ctrl T1.
+
+## Validation du config.yaml
+
+Le fichier `config.yaml` est **validé au démarrage**. En cas d'erreur :
+message explicite + arrêt (exit 1). Vérifie :
+- Présence des clés requises (`boitiers`, `admins_connus`, `plages_internes`,
+  `destinations_legitimes`, `rafales`).
+- Validité des CIDR, adresses IP, expressions régulières.
+- Seuils de rafale (valeurs numériques positives, mode `adaptatif` ou `fixe`).
+
+## Tests historiques (validés sur données réelles)
+- Déduplication des fenêtres qui se chevauchent (42 353 doublons retirés sur un jeu réel).
+- **Détection positive** : scénario de compromission → 3 critiques + 4 élevés.
+- **Absence de faux positifs** sur logs bénins (brute-force échoué → 0 alerte de compte voyou).
+- Montée en charge : 118 Mo / 287 133 événements en 73 s, 1,05 Go RAM.

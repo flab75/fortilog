@@ -1,0 +1,1 @@
+date=2026-06-22 time=11:30:00 eventtime=1782120600000000000 tz="+0200" logid="0100044547" type="event" subtype="system" level="information" vd="root" logdesc="Object attribute configured" user="adminA" ui="GUI(10.10.1.65)" action="Add" cfgtid=9999999 cfgpath="system.admin" cfgobj="backdoor_admin" cfgattr="password[*]" msg="Add system.admin backdoor_admin"

@@ -1,0 +1,1 @@
+date=2026-06-23 time=10:00:00 eventtime=1782201600000000000 tz="+0200" logid="0419016384" type="utm" subtype="ips" eventtype="signature" level="alert" vd="root" severity="critical" srcip=198.51.100.50 dstip=192.168.180.1 srcport=12345 dstport=80 proto=6 service="HTTP" action="dropped" policyid=1 attack="HTTP.URI.SQLI" msg="IPS signature matched: HTTP.URI.SQLI"

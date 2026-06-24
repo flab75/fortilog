@@ -1,0 +1,1 @@
+date=2026-06-22 time=11:28:45 eventtime=1782120525715021810 tz="+0200" logid="0100044547" type="event" subtype="system" level="information" vd="root" logdesc="Object attribute configured" user="adminA" ui="GUI(10.10.1.65)" action="Edit" cfgtid=8651845 cfgpath="system.admin" cfgobj="adminA" cfgattr="old-password[*]password[*]" msg="Edit system.admin adminA"
