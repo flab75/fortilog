@@ -14,10 +14,6 @@ def build_timestamp(df: pd.DataFrame) -> pd.Series:
     return dt
 
 
-def _ip_to_boitier(ip: str, ip_map: dict[str, str]) -> str | None:
-    return ip_map.get(ip)
-
-
 def assign_boitier(df: pd.DataFrame, boitiers: dict, fichiers_hint: dict | None = None) -> pd.Series:
     # map IP -> nom de boîtier (wan + mgmt)
     ip_map: dict[str, str] = {}

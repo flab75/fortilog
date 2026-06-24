@@ -130,11 +130,10 @@ def diff_configs(text_ok: str, text_current: str, all_sections: bool = False) ->
 
 def load_change_events(logs_dir, cfg=None) -> pd.DataFrame:
     """Charge depuis les logs les événements de changement de config (objet + auteur + date)."""
-    from .main import load_file
     from . import ingest, normalize
     parts = []
     for f in ingest.list_log_files(logs_dir):
-        parts.append(load_file(f))
+        parts.append(ingest.load_file(f))
     cols = ["timestamp", "user", "action", "cfgpath", "cfgobj", "ui"]
     if not parts:
         return pd.DataFrame(columns=cols)
