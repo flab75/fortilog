@@ -18,17 +18,26 @@ ou exposé en service réseau doit être publié sous la même licence.
 
 ## Prérequis
 - Python 3.11+
-- Dépendances déclarées dans trois fichiers selon l'usage :
+- Installation recommandée (depuis le dépôt cloné ou directement depuis GitHub) :
 
   ```bash
-  pip install -r requirements.txt        # moteur d'analyse seul (CLI)
-  pip install -r requirements-ui.txt     # UI Streamlit (inclut le moteur)
-  pip install -r requirements-dev.txt    # tests pytest (inclut le moteur, sans Streamlit)
+  pip install .                                          # depuis le dépôt cloné
+  pip install ".[ui]"                                    # + UI Streamlit
+  pip install ".[dev]"                                   # + tests pytest
+  pip install git+https://github.com/flab75/fortilog    # sans cloner
   ```
 
-  > **Note :** `xlsxwriter` et `openpyxl` sont tous les deux requis. Vérifier
-  > avec `pip show xlsxwriter openpyxl` que les deux sont présents dans
-  > l'environnement utilisé par Streamlit.
+  > **Note :** pour développer (modifications prises en compte sans réinstaller) :
+  > `pip install -e .` ou `pip install -e ".[ui,dev]"`.
+
+  Les fichiers `requirements*.txt` restent disponibles pour les environnements
+  qui gèrent les dépendances sans `pyproject.toml` (déploiements CI, virtualenvs manuels) :
+
+  ```bash
+  pip install -r requirements.txt        # moteur d'analyse seul
+  pip install -r requirements-ui.txt     # + UI Streamlit
+  pip install -r requirements-dev.txt    # + tests pytest
+  ```
 
 ## Configuration (référentiel)
 
@@ -37,13 +46,13 @@ documentation `203.0.113.x`, chemins relatifs). Pour analyser de **vrais** logs,
 copiez-le en `config.local.yaml` (déjà dans `.gitignore`) et renseignez vos vraies
 valeurs (admins, IP WAN, utilisateurs, chemins absolus des bases). Puis :
 ```bash
-python -m fortilog.main --input ./logs --config config.local.yaml --output ./rapport
+fortilog --input ./logs --config config.local.yaml --output ./rapport
 ```
 
 **Amorcer le référentiel depuis vos `.conf`** : plutôt que tout saisir à la main, générez
 un brouillon depuis un ou plusieurs backups FortiGate, puis **relisez-le** avant usage :
 ```bash
-python -m fortilog.confgen FW-T1.conf FW-T2.conf -o config.generated.yaml   # --force pour écraser
+fortilog-confgen FW-T1.conf FW-T2.conf -o config.generated.yaml   # --force pour écraser
 ```
 Dérive admins, plages internes, utilisateurs/groupes VPN, peers IPsec et DNS ; les
 paramètres d'analyse prennent les défauts du projet. Le `mgmt` est heuristique (à vérifier)
@@ -63,11 +72,14 @@ rapport `.xlsx` est téléchargeable directement.
 
 ### Ligne de commande (CLI)
 ```bash
-python -m fortilog.main --input ./logs --config config.yaml --output ./rapport
+fortilog --input ./logs --config config.yaml --output ./rapport
 ```
 - `--input` : dossier contenant les fichiers `.log` (un ou plusieurs).
 - `--config` : référentiel « du normal » + paramètres (voir `config.yaml`).
 - `--output` : produit `rapport_fortigate.txt` et `rapport_fortigate.xlsx`.
+
+> Sans installation (`pip install`), les commandes `python -m fortilog.main`,
+> `python -m fortilog.confdiff` et `python -m fortilog.confgen` fonctionnent aussi.
 
 ## Sorties (classeur, 12 feuilles)
 0. `Rapport` — **synthèse** qui décrit les résultats et explique les problèmes, en distinguant
@@ -166,7 +178,7 @@ Compare une config **de référence / validée** à une config **actuelle / susp
 **changé** (objets ajoutés / supprimés / modifiés : admins, règles firewall, VPN, interfaces,
 routes, automation, users…), **par qui** et **quand**.
 ```bash
-python -m fortilog.confdiff reference.conf actuel.conf --logs ./logs    # --all pour toutes les sections
+fortilog-diff reference.conf actuel.conf --logs ./logs    # --all pour toutes les sections
 ```
 - **« par qui / quand »** vient des **logs** (events « Object attribute configured » :
   `cfgobj`/`user`/`action`/timestamp). Le `.conf` seul ne donne que qui a *sauvegardé* le backup
@@ -177,8 +189,8 @@ python -m fortilog.confdiff reference.conf actuel.conf --logs ./logs    # --all 
 - **Intégré à l'analyse générale** : fournissez une config de référence et la comparaison entre
   dans le **rapport global** (feuille Excel « Comparaison config », section du rapport, synthèse) :
   ```bash
-  python -m fortilog.main --input ./logs --config config.local.yaml --output ./rapport \
-         --ref-conf reference.conf
+  fortilog --input ./logs --config config.local.yaml --output ./rapport \
+           --ref-conf reference.conf
   ```
   Dans Streamlit : déposez un fichier dans **« Config de référence / validée »** avant de lancer
   l'analyse (onglet « 🔁 Comparaison config »).
