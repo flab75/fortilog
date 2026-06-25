@@ -67,8 +67,11 @@ def test_real_conf_t1():
     confs = {p.name: p.read_text(errors="replace") for p in REAL_LOGS_T1.glob("*.conf")}
     assert confs, "aucun .conf dans les vrais logs T1"
     ref = confgen.extract_referential(confs)
-    assert any("FW-HMBM" in n for n in ref["boitiers"])
-    assert "AdminLGS" in ref["admins_connus"]
-    assert "10.10.1.0/24" in ref["plages_internes"]
+    assert ref["boitiers"], "aucun boîtier extrait"
+    assert ref["admins_connus"], "aucun admin extrait"
+    assert ref["plages_internes"], "aucune plage interne extraite"
+    import ipaddress
+    for cidr in ref["plages_internes"]:
+        ipaddress.ip_network(cidr, strict=False)  # lève ValueError si invalide
     text = confgen.render_config_yaml(ref)
     assert validate_config(yaml.safe_load(text)) == []

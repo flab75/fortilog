@@ -28,7 +28,7 @@ class Block:
     def __init__(self, kind, header="", name="", parent=None):
         self.kind = kind          # 'root' | 'config' | 'edit'
         self.header = header      # pour 'config' : ex. 'system admin'
-        self.name = name          # pour 'edit'   : ex. 'AdminLGS'
+        self.name = name          # pour 'edit'   : ex. 'admin1'
         self.settings: dict[str, str] = {}
         self.children: list[Block] = []
         self.parent = parent

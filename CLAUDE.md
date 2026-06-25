@@ -238,7 +238,7 @@ externe » ne s'applique qu'aux accès **admin**.
 ## État vérifié (tests réellement passés)
 - **Suite pytest : 160 tests rapides + 8 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
 - **Comparaison config** vérifiée sur vrais .conf : 127 écarts T1↔T2 ; attribution réelle
-  (ex. « AdminHMBM modifié par AdminLGS le 2026-06-22 11:26 ») ; hashs masqués.
+  (ex. « adminB modifié par adminA le 2026-06-22 11:26 ») ; hashs masqués.
 - **Rapport de synthèse** vérifié sur vrai T1 : relie GUI exposée WAN ↔ 128 422 échecs de login
   ↔ 4 472 IP en réputation, conclut « aucune compromission avérée » (aucun brute-force abouti).
 - **Audit .conf** : sur les vrais backups, 0 admin hors référentiel ; 3 admins sans trusthost +
