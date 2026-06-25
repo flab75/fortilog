@@ -35,6 +35,7 @@ fortilog/
 │   ├── geo.py       # enrichissement géo/ASN HORS-LIGNE + portée + top sources + réputation
 │   ├── confaudit.py # parse + audit de compromission des .conf FortiGate (comptes, accès, automation)
 │   ├── confdiff.py  # comparaison 2 .conf (ajout/suppr/modif) + attribution qui/quand via logs ; CLI
+│   ├── confgen.py   # génère un config.yaml (BROUILLON) depuis des .conf (référentiel dérivé) ; CLI
 │   ├── analysis.py  # build_analysis : rapport de SYNTHÈSE (décrit/explique, [AVÉRÉ]/[À CONFIRMER])
 │   ├── report.py    # build_report (texte détaillé) + rappel des limites
 │   ├── excel.py     # write_workbook (xlsxwriter, 12 feuilles, « Rapport » en 1re)
@@ -107,6 +108,19 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
 - **Garde-fou** : tout est SUSPICION/à confirmer (un admin légitime récent peut être hors
   référentiel). Vérifié sur vrais .conf : 0 admin voyou, mais admins sans trusthost + **GUI
   admin exposé sur WAN** (corrèle avec le brute-force massif observé dans les logs).
+
+## Génération du référentiel (`confgen.py`)
+- **Amorce un `config.yaml`** depuis un ou plusieurs `.conf` : DÉRIVE le référentiel
+  (admins via `system admin`/`sso-admin` ; `plages_internes` via interfaces role lan/dmz ;
+  `boitiers.wan` via role wan ; `mgmt` HEURISTIQUE → marqué « à vérifier » ; `utilisateurs_locaux`
+  via `user local` ; `groupes_vpn_legitimes` via `vpn ssl settings`/authentication-rule ;
+  `utilisateurs_vpn_actifs` = membres ∩ users locaux ; `destinations_legitimes` via phase1
+  `remote-gw` + `system dns`). Les **paramètres** (rafales, seuils, regex, géo…) = **défauts**.
+- **Ne devine rien d'autre, n'extrait aucun secret.** Le fichier produit est un **BROUILLON à relire**.
+  Réutilise le parseur de `confaudit`. Sortie passe `validate_config`.
+- Accès : CLI `python -m fortilog.confgen FW-T1.conf [FW-T2.conf ...] [-o config.generated.yaml] [--force]`
+  (refuse d'écraser sans `--force`) + section Streamlit « 🧩 Générer un référentiel ».
+  `config.generated.yaml` est gitignored (vraies valeurs) ; à relire puis renommer en `config.local.yaml`.
 
 ## Conventions
 - **Lancement CLI :** `python -m fortilog.main --input ./logs --config config.yaml --output ./rapport`.
