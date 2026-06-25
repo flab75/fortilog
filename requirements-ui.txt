@@ -1,0 +1,4 @@
+# Dépendances de l'UI Streamlit (cœur + streamlit). Streamlit tire un arbre
+# transitif important (pyarrow, protobuf, requests…) : isolé ici, hors CI.
+-r requirements.txt
+streamlit>=1.30

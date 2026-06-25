@@ -1,0 +1,7 @@
+# Dépendances cœur du moteur d'analyse (hors-ligne, sans réseau).
+# UI Streamlit : voir requirements-ui.txt. Tests : voir requirements-dev.txt.
+pandas>=2.0,<4
+numpy>=1.24
+PyYAML>=6.0
+XlsxWriter>=3.0
+openpyxl>=3.1
