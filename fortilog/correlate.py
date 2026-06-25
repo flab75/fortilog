@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Corrélation temporelle : reconstruit des CHAÎNES d'indices (IoC) ordonnées.
 
 Objectif : détecter la SÉQUENCE login -> création/modif de compte -> exfiltration

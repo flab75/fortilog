@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Comparaison de deux configurations FortiGate (.conf) : un état VALIDÉ/de référence
 vs un état ACTUEL (potentiellement corrompu). Répond à :
 - QU'EST-CE QUI A CHANGÉ : objets ajoutés / supprimés / modifiés (admins, règles,

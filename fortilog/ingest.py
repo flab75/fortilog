@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Découverte des fichiers et détection automatique du type de log (par contenu)."""
 from __future__ import annotations
 from pathlib import Path

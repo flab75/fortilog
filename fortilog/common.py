@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Constantes et petits helpers partagés entre modules (évite la duplication)."""
 from __future__ import annotations
 import pandas as pd

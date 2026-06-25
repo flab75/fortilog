@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Validation du config.yaml au démarrage. Échoue proprement sur référentiel mal formé."""
 from __future__ import annotations
 import ipaddress

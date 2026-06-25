@@ -1,6 +1,7 @@
 # fortilog — Analyseur de logs FortiGate (détection de compromission)
 
 [![CI](https://github.com/flab75/fortilog/actions/workflows/ci.yml/badge.svg)](https://github.com/flab75/fortilog/actions/workflows/ci.yml)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 
 Analyse des exports de logs FortiCloud/FortiGate (`clé="valeur"`) : détection
 automatique du type, parsing, grille d'audit de compromission, comparaison
@@ -9,6 +10,11 @@ multi-dates / multi-boîtiers, sortie **rapport texte** + **classeur Excel**.
 > **Principe :** l'outil **signale et structure** ; le **verdict reste humain**.
 > Il ne produit aucune conclusion que les logs ne permettent pas (certaines
 > vérifications exigent l'IAM FortiCloud ou la configuration du boîtier).
+
+## Licence
+
+[GNU Affero General Public License v3.0](LICENSE) — le code source de tout dérivé distribué
+ou exposé en service réseau doit être publié sous la même licence.
 
 ## Prérequis
 - Python 3.11+

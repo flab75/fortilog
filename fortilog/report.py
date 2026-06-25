@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Rapport texte synthétique. Rappelle les limites assumées."""
 from __future__ import annotations
 from .ingest import UTM_NO_RULES

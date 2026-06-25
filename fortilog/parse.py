@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Parsing robuste des logs FortiGate au format clé=valeur.
 
 Hypothèse de format (vérifiée sur les exports fournis) : chaque ligne est une

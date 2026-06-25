@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Génère un référentiel `config.yaml` (BROUILLON) depuis un ou plusieurs .conf FortiGate.
 
 Principe directeur respecté : l'outil DÉRIVE ce qui est lisible dans la configuration

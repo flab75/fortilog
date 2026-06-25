@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Génération du classeur .xlsx (xlsxwriter). Sortie autonome lisible par Excel (Mac/Win)."""
 from __future__ import annotations
 import pandas as pd

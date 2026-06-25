@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Comparaison : agrégats temporels, détection de rafales adaptatives, différentiel d'entités."""
 from __future__ import annotations
 import pandas as pd

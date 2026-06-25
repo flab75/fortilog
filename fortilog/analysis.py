@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Rapport d'analyse SYNTHÉTIQUE : décrit les résultats, explique les problèmes
 potentiels ou avérés, et relie les constats entre eux (config ↔ logs ↔ threat intel).
 

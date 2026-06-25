@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Fonctions de préparation des données pour l'UI — testables sans Streamlit."""
 from __future__ import annotations
 import pandas as pd

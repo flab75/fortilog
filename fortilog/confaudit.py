@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Audit d'un fichier de configuration FortiGate (.conf) pour indices de compromission.
 
 Le format est le CLI FortiGate : blocs `config <chemin>` / `edit "<nom>"` / `set k v` /

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """UI Streamlit pour fortilog — analyse de logs FortiGate.
 
 Lancement : streamlit run app.py

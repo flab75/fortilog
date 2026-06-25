@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Grille d'audit VECTORISÉE : marque les événements à risque + sévérité.
 L'outil SIGNALE ; le verdict reste humain. Aucune conclusion hors logs."""
 from __future__ import annotations

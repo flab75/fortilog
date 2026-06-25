@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Enrichissement géo/ASN des IP — 100 % HORS-LIGNE, aucune requête réseau.
 
 Principe directeur : c'est du CONTEXTE, pas un verdict. Une IP « hébergeur au
