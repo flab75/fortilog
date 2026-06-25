@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/flab75/fortilog/actions/workflows/ci.yml/badge.svg)](https://github.com/flab75/fortilog/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.11%20|%203.12-blue)
+![Platforms](https://img.shields.io/badge/platform-Linux%20|%20Windows%20|%20macOS-lightgrey)
 
 Analyse des exports de logs FortiCloud/FortiGate (`clé="valeur"`) : détection
 automatique du type, parsing, grille d'audit de compromission, comparaison
