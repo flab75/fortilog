@@ -79,6 +79,11 @@ reputation_lists:
 app_ctrl_whitelist:
   - proxy-safebrowsing.googleapis.com
 
+# Rapport de synthèse (analysis.py, optionnel) : nombre de constats/événements/IP
+# détaillés individuellement dans chaque section (au-delà : « … et N autres »).
+rapport:
+  max_constats: 5
+
 # Indice optionnel : rattacher un fichier à un boîtier quand l'IP du boîtier
 # n'apparait pas dans le log (cas des logs event/user, event/vpn, traffic/forward).
 # Correspondance par sous-chaîne du nom de fichier. Laisser vide si inconnu.

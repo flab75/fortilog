@@ -49,8 +49,10 @@ python -m fortilog.main --input ./logs --config config.yaml --output ./rapport
 
 ## Sorties (classeur, 12 feuilles)
 0. `Rapport` — **synthèse** qui décrit les résultats et explique les problèmes, en distinguant
-   **[AVÉRÉ]** (état de config, volumes) de **[À CONFIRMER]** (suspicions). Aussi en tête du
-   rapport texte et dans l'onglet « Rapport » de l'UI Streamlit.
+   **[AVÉRÉ]** (état de config, volumes) de **[À CONFIRMER]** (suspicions). Chaque section
+   (config, events, IP externes) détaille les constats les plus sévères individuellement
+   (réglable via `rapport.max_constats`, défaut 5). Aussi en tête du rapport texte et dans
+   l'onglet « Rapport » de l'UI Streamlit.
 1. `Tableau de bord` — agrégats par boîtier/jour (échecs, logins OK, lockouts, SSL-VPN, passwd_invalid, IP uniques).
 2. `Evenements signales` — événements à risque, colorés par sévérité (info→critique), enrichis portée/pays/ASN/réputation.
 3. `Chaines suspectes` — séquences corrélées (accès→compte→exfiltration) — **à confirmer**.

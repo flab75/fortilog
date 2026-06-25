@@ -36,6 +36,13 @@ def test_invalid_regex(cfg):
     assert any("regex invalide" in e for e in errors)
 
 
+def test_invalid_rapport_max_constats(cfg):
+    bad = copy.deepcopy(cfg)
+    bad["rapport"] = {"max_constats": 0}
+    errors = validate_config(bad)
+    assert any("rapport.max_constats" in e for e in errors)
+
+
 def test_invalid_rafale_fenetre(cfg):
     bad = copy.deepcopy(cfg)
     bad["rafales"]["fenetre_minutes"] = -5
