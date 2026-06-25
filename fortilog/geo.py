@@ -20,6 +20,8 @@ import csv
 import ipaddress
 from pathlib import Path
 
+import pandas as pd
+
 # Valeurs de portée (scope) — calculables SANS aucune base.
 INTERNE = "interne"
 EXTERNE = "externe"
@@ -212,8 +214,6 @@ def enrich_events(events, cfg: dict, enricher: GeoEnricher | None = None,
                   repdb: ReputationDB | None = None):
     """Ajoute aux événements : srcip_portee (toujours) + srcip_pays/asn/org (si base géo)
     + srcip_reputation (si listes de réputation). N'altère aucune colonne existante."""
-    import pandas as pd
-
     if events is None or events.empty or "srcip" not in events.columns:
         return events
     if enricher is None:
@@ -248,8 +248,6 @@ def reputation_sources(full, cfg: dict, repdb: ReputationDB | None = None,
     """IP sources présentes dans une liste de réputation (threat intel) ayant touché
     le pare-feu : srcip, listes, volume, logins échoués, géo/ASN. Signal fort — mais
     une présence en liste reste À CONFIRMER (faux positifs/listes larges possibles)."""
-    import pandas as pd
-
     cols = ["srcip", "listes", "srcip_pays", "srcip_asn", "srcip_org",
             "occurrences", "logins_echoues"]
     if full is None or full.empty or "srcip" not in full.columns:
@@ -314,8 +312,6 @@ def top_external_sources(full, cfg: dict, enricher: GeoEnricher | None = None, n
     enrichies portée/pays/ASN. Surface les sources d'attaque que les events ne
     listent pas (un brute-force `name_invalid` n'est pas une détection R2).
     Exclut l'infrastructure connue (WAN/mgmt des boîtiers, peers/DNS légitimes)."""
-    import pandas as pd
-
     cols = ["srcip", "srcip_portee", "srcip_pays", "srcip_asn", "srcip_org",
             "occurrences", "logins_echoues"]
     if full is None or full.empty or "srcip" not in full.columns:

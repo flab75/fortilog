@@ -6,6 +6,7 @@ import pandas as pd
 import yaml
 
 from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis
+from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
 from .validate import validate_config
 
 
@@ -21,37 +22,13 @@ def _emit(out, tables, meta, cfg):
     print(f"\n>> Classeur : {xlsx_path}")
     return tables, meta
 
-TARGET_COLS = ["date", "time", "tz", "eventtime", "logid", "type", "subtype",
-               "level", "logdesc", "user", "ui", "method", "srcip", "dstip",
-               "srcport", "dstport", "action", "status", "reason", "group",
-               "cfgpath", "cfgobj", "cfgattr", "remip", "tunnelip", "tunneltype",
-               "service", "sentbyte", "rcvdbyte", "msg",
-               # utm/app-ctrl
-               "appid", "appcat", "app", "hostname", "apprisk", "direction", "policyid",
-               # event/security-rating
-               "auditscore", "criticalcount", "highcount", "mediumcount",
-               "lowcount", "passedcount", "auditreporttype", "auditid"]
-
-
-def load_file(path: Path) -> pd.DataFrame:
-    keep = set(TARGET_COLS)
-    recs = []
-    with open(path, errors="replace") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            d = ingest.parse_line(line)
-            recs.append({k: d.get(k, "") for k in keep})  # colonnes utiles seulement
-    df = pd.DataFrame.from_records(recs, columns=TARGET_COLS)
-    df["source_file"] = path.name
-    return df
-
 
 def _compute_config_diff(ref_conf, conf_files, logs_dir, cfg, boitier_for):
     """Compare chaque .conf courant à une config de RÉFÉRENCE (validée), avec
-    attribution qui/quand via les logs. Renvoie un DataFrame (vide si pas de référence)."""
-    cols = ["boitier", "section", "objet", "statut", "changements", "criticite", "auteur", "quand"]
+    attribution qui/quand via les logs. Renvoie un DataFrame (vide si pas de référence).
+    Colonnes alignées sur la sortie réelle (diff_configs + attribute_changes + inserts)."""
+    cols = ["boitier", "fichier", "section", "objet", "statut", "changements",
+            "criticite", "auteur", "quand", "action_log"]
     if not ref_conf or not conf_files:
         return pd.DataFrame(columns=cols)
     ref_text = Path(ref_conf).read_text(errors="replace")
