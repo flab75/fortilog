@@ -110,7 +110,10 @@ def correlate_chains(events: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     # sévérité ≠ info). Un login admin interne connu de routine n'est pas un indice.
     sev = g("severite")
     df.loc[(df["_kind"] == ENTRY) & (sev == "info"), "_kind"] = ""
-    df["_ip"] = df.apply(_effective_ip, axis=1)
+    # IP effective vectorisée : srcip si présent, sinon IP extraite du champ ui.
+    _src = g("srcip")
+    _ui_ip = g("ui").str.extract(_IP_IN_UI.pattern, expand=False).fillna("")
+    df["_ip"] = _src.where(_src != "", _ui_ip)
     df["_user"] = g("user")
 
     # On ne garde que les événements porteurs d'une étape, et on déduplique les
@@ -134,7 +137,7 @@ def correlate_chains(events: pd.DataFrame, cfg: dict) -> pd.DataFrame:
             matched = _find_ordered(steps, sequence, window)
             if not matched:
                 continue
-            sub = grp.loc[matched]
+            sub = grp.loc[matched].sort_values("timestamp")
             # Signature = ensemble des index d'événements (évite de réémettre la
             # même chaîne via acteur ET ip).
             sig = frozenset(matched)
@@ -143,15 +146,13 @@ def correlate_chains(events: pd.DataFrame, cfg: dict) -> pd.DataFrame:
             seen_signatures.add(sig)
             chain_id += 1
             debut, fin = sub["timestamp"].min(), sub["timestamp"].max()
-            etapes = " → ".join(sub.sort_values("timestamp")["_kind"].tolist())
+            etapes = " → ".join(sub["_kind"].tolist())
             boitier = sub["boitier"].iloc[0] if "boitier" in sub.columns else ""
+            regles = (sub["regle"] if "regle" in sub.columns
+                      else pd.Series([""] * len(sub), index=sub.index))
             detail = " | ".join(
                 f"{str(t)[:19]} {k} [{r}]"
-                for t, k, r in zip(
-                    sub.sort_values("timestamp")["timestamp"],
-                    sub.sort_values("timestamp")["_kind"],
-                    sub.sort_values("timestamp").get("regle", pd.Series([""] * len(sub))),
-                )
+                for t, k, r in zip(sub["timestamp"], sub["_kind"], regles)
             )
             rows.append({
                 "chaine_id": chain_id,
