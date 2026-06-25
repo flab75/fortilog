@@ -1,5 +1,7 @@
 # fortilog — Analyseur de logs FortiGate (détection de compromission)
 
+[![CI](https://github.com/flab75/fortilog/actions/workflows/ci.yml/badge.svg)](https://github.com/flab75/fortilog/actions/workflows/ci.yml)
+
 Analyse des exports de logs FortiCloud/FortiGate (`clé="valeur"`) : détection
 automatique du type, parsing, grille d'audit de compromission, comparaison
 multi-dates / multi-boîtiers, sortie **rapport texte** + **classeur Excel**.

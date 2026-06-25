@@ -1,0 +1,4 @@
+# Dépendances de test (cœur + pytest). N'inclut PAS Streamlit : la suite
+# n'importe pas app.py -> CI plus rapide et surface supply-chain réduite.
+-r requirements.txt
+pytest>=7
