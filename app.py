@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from fortilog.main import run
-from fortilog import confdiff
+from fortilog import confdiff, confgen
 from fortilog.ui_helpers import (
     prepare_events, prepare_metrics, prepare_agg,
     prepare_bursts, prepare_diff, prepare_chains, SEV_COLORS,
@@ -346,3 +346,49 @@ if _cmp:
             data=diff.to_csv(index=False).encode("utf-8"),
             file_name="comparaison_config.csv", mime="text/csv",
         )
+
+
+# ── Générer un référentiel config.yaml depuis des .conf ───────────────────────
+
+st.divider()
+st.header("🧩 Générer un référentiel (config.yaml) depuis des .conf")
+st.caption(
+    "Dérive un **brouillon** de référentiel depuis un ou plusieurs backups `.conf` : "
+    "admins, plages internes, utilisateurs/groupes VPN, peers IPsec, DNS. Les paramètres "
+    "d'analyse sont remplis avec les défauts du projet. **À RELIRE avant usage** "
+    "(le `mgmt` est heuristique, `fichiers_boitier` est à compléter). Aucun secret n'est extrait."
+)
+
+gen_confs = st.file_uploader(
+    "Backups de configuration (.conf)", type=["conf"],
+    accept_multiple_files=True, key="gen_confs",
+)
+if st.button("🧩 Générer le config.yaml", disabled=not gen_confs):
+    try:
+        confs = {f.name: f.getvalue().decode("utf-8", errors="replace") for f in gen_confs}
+        ref = confgen.extract_referential(confs)
+        st.session_state["gen_cfg"] = {"text": confgen.render_config_yaml(ref), "ref": ref}
+    except Exception as e:
+        st.session_state.pop("gen_cfg", None)
+        st.error(f"Erreur de génération : {e}")
+        raise
+
+_gen = st.session_state.get("gen_cfg")
+if _gen:
+    ref = _gen["ref"]
+    st.success(
+        f"Référentiel généré — boîtiers : {', '.join(ref['boitiers']) or '—'} ; "
+        f"{len(ref['admins_connus'])} admin(s), {len(ref['plages_internes'])} plage(s) interne(s), "
+        f"{len(ref['groupes_vpn_legitimes'])} groupe(s) VPN, "
+        f"{len(ref['utilisateurs_vpn_actifs'])} utilisateur(s) VPN."
+    )
+    st.warning(
+        "⚠ **Brouillon à relire** : vérifier `mgmt` (heuristique) et compléter `fichiers_boitier` "
+        "avant d'utiliser ce fichier comme référentiel (renommer en `config.local.yaml`)."
+    )
+    st.download_button(
+        "⬇️ Télécharger config.generated.yaml",
+        data=_gen["text"].encode("utf-8"),
+        file_name="config.generated.yaml", mime="text/yaml", type="primary",
+    )
+    st.code(_gen["text"], language="yaml")

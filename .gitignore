@@ -14,3 +14,6 @@ config.local.yaml
 
 # Sorties d'analyse générées (le dossier de rapport par défaut)
 /rapport/
+
+# Référentiel généré par fortilog.confgen (contient de vraies valeurs)
+config.generated.yaml

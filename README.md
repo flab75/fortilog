@@ -28,6 +28,16 @@ valeurs (admins, IP WAN, utilisateurs, chemins absolus des bases). Puis :
 python -m fortilog.main --input ./logs --config config.local.yaml --output ./rapport
 ```
 
+**Amorcer le référentiel depuis vos `.conf`** : plutôt que tout saisir à la main, générez
+un brouillon depuis un ou plusieurs backups FortiGate, puis **relisez-le** avant usage :
+```bash
+python -m fortilog.confgen FW-T1.conf FW-T2.conf -o config.generated.yaml   # --force pour écraser
+```
+Dérive admins, plages internes, utilisateurs/groupes VPN, peers IPsec et DNS ; les
+paramètres d'analyse prennent les défauts du projet. Le `mgmt` est heuristique (à vérifier)
+et `fichiers_boitier` est à compléter. Aucun secret n'est extrait. Également disponible dans
+l'UI Streamlit (section « 🧩 Générer un référentiel »). Renommez ensuite en `config.local.yaml`.
+
 ## Usage
 
 ### Interface graphique (Streamlit)
