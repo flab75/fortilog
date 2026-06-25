@@ -310,7 +310,7 @@ def main():
     out = Path(a.output)
     if out.exists() and not a.force:
         raise SystemExit(f"{out} existe déjà — utiliser --force pour écraser.")
-    out.write_text(text)
+    out.write_text(text, encoding="utf-8")
 
     import yaml
     from .validate import validate_config

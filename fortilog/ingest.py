@@ -62,7 +62,7 @@ def list_log_files(folder: str | Path) -> list[Path]:
 def detect_type(file: str | Path, sample: int = 200) -> tuple[str, str, bool]:
     """Lit jusqu'à `sample` lignes, renvoie (type, subtype, reconnu)."""
     types: Counter = Counter()
-    with open(file, errors="replace") as fh:
+    with open(file, encoding="utf-8", errors="replace") as fh:
         for i, line in enumerate(fh):
             if i >= sample:
                 break
@@ -89,7 +89,7 @@ def load_file(path, columns: list | None = None) -> pd.DataFrame:
     keep = list(columns) if columns is not None else TARGET_COLS
     cols: dict[str, list] = {k: [] for k in keep}
     appenders = [(k, cols[k].append) for k in keep]  # bind des .append (boucle chaude)
-    with open(path, errors="replace") as fh:
+    with open(path, encoding="utf-8", errors="replace") as fh:
         for line in fh:
             line = line.strip()
             if not line:

@@ -71,7 +71,7 @@ class RangeTable:
         Formats type FireHOL/.netset/.ipset. IPv6 et lignes illisibles ignorés."""
         t = cls()
         rows = []
-        with open(path, errors="replace") as fh:
+        with open(path, encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 line = line.split("#")[0].split(";")[0].strip()
                 if not line:
@@ -95,7 +95,7 @@ class RangeTable:
         payload_cols = indices des colonnes de charge utile. Lignes illisibles ignorées."""
         t = cls()
         rows = []
-        with open(path, errors="replace", newline="") as fh:
+        with open(path, encoding="utf-8", errors="replace", newline="") as fh:
             for parts in csv.reader(fh, delimiter=delimiter):
                 if len(parts) <= max(1, *payload_cols):
                     continue

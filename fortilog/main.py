@@ -18,7 +18,7 @@ def _emit(out, tables, meta, cfg):
     xlsx_path = out / "rapport_fortigate.xlsx"
     excel.write_workbook(str(xlsx_path), tables, cfg, analysis_text=rapport)
     txt = rapport + "\n\n" + ("=" * 70) + "\n" + report.build_report(tables, meta)
-    (out / "rapport_fortigate.txt").write_text(txt)
+    (out / "rapport_fortigate.txt").write_text(txt, encoding="utf-8")
     print(txt)
     print(f"\n>> Classeur : {xlsx_path}")
     return tables, meta
