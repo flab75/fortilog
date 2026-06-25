@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 import pandas as pd
 
-SEV_ORDER = {"info": 0, "faible": 1, "moyen": 2, "eleve": 3, "critique": 4}
+from .common import SEV_ORDER
 
 # Comptes SSO FortiCloud auto-provisionnés (présents par défaut, non « voyous »).
 _CLOUD_ACCOUNT_RE = re.compile(r"(fortigatecloud\.com$|^FortiGateCloud$|^FortiCloud)", re.I)

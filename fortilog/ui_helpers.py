@@ -2,7 +2,7 @@
 from __future__ import annotations
 import pandas as pd
 
-from .detect import SEV_ORDER
+from .common import SEV_ORDER
 
 SEV_COLORS = {
     "critique": "#C00000",

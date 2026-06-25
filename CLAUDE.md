@@ -24,6 +24,7 @@ fortilog/
 ├── pytest.ini       # config pytest (mark slow)
 ├── app.py           # UI Streamlit (streamlit run app.py) — s'appuie sur fortilog.main.run()
 ├── fortilog/
+│   ├── common.py    # constantes/helpers partagés : SEV_ORDER, CFG_ACCOUNT_PATHS, str_col
 │   ├── parse.py     # parse_line : clé=valeur, valeurs quotées + échappements Fortinet (\" \\)
 │   ├── ingest.py    # list_log_files + detect_type (par type/subtype/logid)
 │   ├── normalize.py # build_timestamp, assign_boitier (par IP + indice fichier), deduplicate

@@ -12,6 +12,8 @@ from __future__ import annotations
 import re
 import pandas as pd
 
+from .common import CFG_ACCOUNT_PATHS, str_col
+
 # Étapes canoniques d'une chaîne d'intrusion (dérivées de la sémantique du log,
 # pas du libellé de règle — pour dédupliquer les lignes flaggées par 2 règles).
 ENTRY = "ACCES"            # login admin réussi / tunnel VPN établi
@@ -23,11 +25,6 @@ LATERAL = "LATERAL"        # accès pool VPN -> management
 # Séquence requise par défaut pour qu'une chaîne soit « complète » (critique).
 DEFAULT_SEQUENCE = [ENTRY, ESCALATION, EXFIL]
 DEFAULT_WINDOW_MIN = 60
-
-CFG_ACCOUNT_PATHS = {
-    "system.admin", "system.sso-forticloud-admin",
-    "system.sso-fortigate-cloud-admin", "system.sso-admin", "system.api-user",
-}
 
 _IP_IN_UI = re.compile(r"\((\d{1,3}(?:\.\d{1,3}){3})\)")
 
@@ -103,7 +100,7 @@ def correlate_chains(events: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     if "timestamp" not in df.columns:
         return empty
 
-    g = lambda c: df.get(c, pd.Series([""] * len(df), index=df.index)).fillna("").astype(str)
+    g = lambda c: str_col(df, c)
     df["_kind"] = [
         _step_kind(ld, ac, cp)
         for ld, ac, cp in zip(g("logdesc"), g("action"), g("cfgpath"))
