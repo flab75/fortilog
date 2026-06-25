@@ -86,21 +86,22 @@ def run(input_dir, config_path, output_dir, ref_conf=None):
     parts, meta_files = [], []
     for f in files:
         t, s, reconnu = ingest.detect_type(f)
-        df = load_file(f)
+        df = load_file(f, columns=ingest.ANALYSIS_COLS)  # colonnes d'affichage relues en 2ᵉ passe
         df["type"] = df["type"].replace("", t)
         df["subtype"] = df["subtype"].replace("", s)
         meta_files.append({"name": f.name, "type": t, "subtype": s,
                            "reconnu": reconnu, "rows": len(df)})
         parts.append(df)
     full = pd.concat(parts, ignore_index=True)
+    del parts  # libère les frames par fichier (évite le doublement transitoire au concat)
 
     full["timestamp"] = normalize.build_timestamp(full)
     full["boitier"] = normalize.assign_boitier(full, cfg.get("boitiers", {}), cfg.get("fichiers_boitier"))
     full = normalize.deduplicate(full)
 
-    # Optimisation mémoire : colonnes à faible cardinalité -> category
-    for c in ["type", "subtype", "level", "logdesc", "action", "status",
-              "reason", "boitier", "source_file"]:
+    # Optimisation mémoire : colonnes à faible cardinalité -> category (valeurs inchangées)
+    for c in ["type", "subtype", "logdesc", "action", "status", "reason",
+              "boitier", "source_file", "appcat", "apprisk"]:
         if c in full.columns:
             full[c] = full[c].astype("category")
 
@@ -148,12 +149,21 @@ def run(input_dir, config_path, output_dir, ref_conf=None):
             diffs.append(d)
     diff = pd.concat(diffs, ignore_index=True) if diffs else pd.DataFrame()
 
+    # Feuille « Données unifiées » : le frame d'analyse ne porte pas les colonnes
+    # d'affichage (msg, ports, octets…). On sélectionne les lignes à afficher (mêmes
+    # que l'historique : toutes, ou les MAX dernières par timestamp), puis on RELIT
+    # ces seules colonnes pour ces seules lignes (2ᵉ passe -> mémoire bornée).
     MAX_UNIFIE = int(cfg.get("max_lignes_donnees_unifiees", 200000))
-    unifie_cols = [c for c in TARGET_COLS if c in full.columns] + ["boitier", "timestamp", "source_file"]
-    unifie = full[unifie_cols]
-    unifie_tronque = len(unifie) > MAX_UNIFIE
-    if unifie_tronque:
-        unifie = unifie.sort_values("timestamp").tail(MAX_UNIFIE)
+    unifie_tronque = len(full) > MAX_UNIFIE
+    sel = (full.sort_values("timestamp").tail(MAX_UNIFIE) if unifie_tronque else full).copy()
+    wanted = set(zip(sel["source_file"].astype(str), sel["_row"]))
+    disp = ingest.load_columns_for_rows(files, wanted, ingest.DISPLAY_ONLY_COLS)
+    disp = disp.set_index(["source_file", "_row"]).reindex(
+        list(zip(sel["source_file"].astype(str), sel["_row"])))
+    for c in ingest.DISPLAY_ONLY_COLS:
+        sel[c] = disp[c].fillna("").values
+    unifie_cols = TARGET_COLS + ["boitier", "timestamp", "source_file"]
+    unifie = sel[unifie_cols]
 
     EVENT_COLS = ["timestamp", "boitier", "severite", "regle", "detail", "logdesc",
                   "user", "ui", "srcip", "srcip_portee", "srcip_pays", "srcip_asn",
