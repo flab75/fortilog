@@ -1,6 +1,5 @@
 """Rapport texte synthétique. Rappelle les limites assumées."""
 from __future__ import annotations
-import pandas as pd
 from .ingest import UTM_NO_RULES
 
 LIMITES = """\

@@ -12,7 +12,13 @@ multi-dates / multi-boîtiers, sortie **rapport texte** + **classeur Excel**.
 
 ## Prérequis
 - Python 3.11+
-- `pip install pandas xlsxwriter pyyaml openpyxl streamlit`
+- Dépendances déclarées dans trois fichiers selon l'usage :
+
+  ```bash
+  pip install -r requirements.txt        # moteur d'analyse seul (CLI)
+  pip install -r requirements-ui.txt     # UI Streamlit (inclut le moteur)
+  pip install -r requirements-dev.txt    # tests pytest (inclut le moteur, sans Streamlit)
+  ```
 
   > **Note :** `xlsxwriter` et `openpyxl` sont tous les deux requis. Vérifier
   > avec `pip show xlsxwriter openpyxl` que les deux sont présents dans
@@ -82,7 +88,9 @@ python -m fortilog.main --input ./logs --config config.yaml --output ./rapport
 - **Création/modif** de compte admin/SSO/API (Add=élevé ; auteur inconnu=critique).
 - Nom de compte **potentiellement voyou** (motif jetable/mail anonyme — SUSPICION).
 - **Exfiltration** : téléchargement de config/logs via GUI.
-- **Réseau** : sortie boîtier vers destination non listée ; accès pool VPN → management.
+- **Automation déclenchée** → info (l'event log ne donne pas l'action-type : vérifier en config).
+- **Réseau** : sortie boîtier vers destination non listée (moyen).
+- **Réseau** : accès depuis pool VPN → interface de management (élevé).
 - **UTM/app-ctrl** : application bloquée par FortiGate (élevé) ; `apprisk="critical"` non bloquée
   hors whitelist (moyen, SUSPICION) ; catégorie Proxy hors whitelist (élevé). Whitelist configurable
   (`app_ctrl_whitelist`) — exclut par défaut `proxy-safebrowsing.googleapis.com` (Safe Browsing).
@@ -190,8 +198,10 @@ python -m fortilog.confdiff reference.conf actuel.conf --logs ./logs    # --all 
   « source externe » ne s'applique qu'aux accès **admin**.
 
 ## Performance & limites (mesuré)
-- ~0,6 s/Mo ; **pic mémoire ≈ 9× la taille d'entrée** (118 Mo → ~1,1 Go, 73 s).
-- Pour de **très gros volumes** (> ~300 Mo cumulés sur peu de RAM) : traiter par
+- ~0,6 s/Mo ; **pic mémoire ≈ 4× la taille d'entrée** (P5 phases 1+2 : parsing
+  colonnaire + séparation colonnes d'analyse/affichage). Mesuré sur T1
+  (397 Mo / 392 541 lignes) : **1 599 Mo** de pic RSS, sorties identiques.
+- Pour de **très gros volumes** (> ~600 Mo cumulés sur peu de RAM) : traiter par
   **batches** (par jour ou par boîtier).
 - Excel plafonne à ~1 048 576 lignes → la feuille `Donnees unifiees` est
   **tronquée** (paramètre `max_lignes_donnees_unifiees`, défaut 200 000) ; les
@@ -200,7 +210,7 @@ python -m fortilog.confdiff reference.conf actuel.conf --logs ./logs    # --all 
 
 ## Tests
 
-Suite pytest versionnée : **160 tests rapides** + **8 tests sur vrais logs**.
+Suite pytest versionnée : **173 tests rapides** + **9 tests sur vrais logs** (@slow) = **182 au total**.
 
 ```bash
 # Tests rapides (fixtures synthétiques)
@@ -215,21 +225,25 @@ python -m pytest tests/ --ignore=tests/fixtures
 
 Couverture des tests :
 - **parse.py** : 12 cas (quotées/espaces, mixtes, vide, ligne réelle, échappements `\"`/`\\`).
-- **ingest.py** : 8 cas (chaque type connu + inconnu + UTM générique, listage).
+- **ingest.py** : 7 cas (chaque type connu + inconnu + UTM générique, listage).
 - **normalize.py** : 6 cas (timestamp, boîtier par IP/fichier/inconnu, dédup).
 - **detect.py** : 28 cas (R1-R9 pos/nég, 6 cas R10a/b/c, 3 cas R11 brute-force, 2 cas R12 horaires).
 - **geo.py** : 22 cas (portée, lookup CSV/TSV/CIDR, enrichissement géo + réputation,
   dégradation, top sources, exclusion infra, exclusion bogon interne).
 - **confaudit.py** : 11 cas (parsing CLI, C1-C6, config propre sans critique, tri par sévérité).
-- **analysis.py** : 6 cas (sections, corrélation WAN↔brute-force, alerte brèche, mode config-seul, vide).
+- **analysis.py** : 13 cas (sections, constats détaillés par règle, `max_constats` configurable,
+  tag [À CONFIRMER] sur SUSPICION, top events §3/§4, corrélation WAN↔brute-force, alerte brèche,
+  mode config-seul, vide).
 - **confdiff.py** : 12 cas (ajout/suppr/modif admin, nouvelle règle, param global, masquage secret,
   attribution qui/quand depuis logs, absence de logs, en-tête « sauvé par », compte cloud → info).
 - **compare.py** : 5 cas (agrégats, rafales, différentiel).
 - **correlate.py** : 11 cas (chaîne complète, bénin, activité admin légitime, ordre,
   fenêtre trop courte, mapping d'étapes, IP effective).
-- **validate.py** : config valide + erreurs distinctes (CIDR, IP, regex, seuils, corrélation,
-  whitelist app-ctrl).
-- **ui_helpers.py** : tri sévérité, métriques, chaînes, formatage timestamps, couleurs.
+- **validate.py** : 16 cas — config valide + erreurs distinctes (CIDR, IP, regex, seuils,
+  corrélation, whitelist app-ctrl, `rapport.max_constats`).
+- **ui_helpers.py** : 16 cas — tri sévérité, métriques, chaînes, formatage timestamps, couleurs.
+- **confgen.py** : 6 cas rapides + 1 @slow (extraction basique, plages+mgmt heuristique, VPN,
+  aucun secret, YAML valide, multi-conf, vrais .conf T1).
 - **intégration** : scénario compromission (≥3 critiques), scénario bénin (0 FP),
   parsing vrais logs T1/T2, détection sur vrai fichier event/system, whitelist app-ctrl T1.
 
@@ -246,4 +260,4 @@ message explicite + arrêt (exit 1). Vérifie :
 - Déduplication des fenêtres qui se chevauchent (42 353 doublons retirés sur un jeu réel).
 - **Détection positive** : scénario de compromission → 3 critiques + 4 élevés.
 - **Absence de faux positifs** sur logs bénins (brute-force échoué → 0 alerte de compte voyou).
-- Montée en charge : 118 Mo / 287 133 événements en 73 s, 1,05 Go RAM.
+- Montée en charge : T1 post-P5 — 397 Mo / 392 541 lignes → **1 599 Mo** pic RSS (−34 % vs avant P5).

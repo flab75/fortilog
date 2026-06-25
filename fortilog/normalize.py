@@ -1,6 +1,5 @@
 """Normalisation : horodatage unifié, rattachement boîtier (par IP), déduplication."""
 from __future__ import annotations
-import ipaddress
 import pandas as pd
 
 DEDUP_KEYS = ["eventtime", "logid", "srcip", "user", "action"]

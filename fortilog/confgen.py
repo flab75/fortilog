@@ -174,7 +174,6 @@ def extract_referential(confs: dict) -> dict:
 _DEFAULTS = r"""
 rafales:
   fenetre_minutes: 60
-  pas_minutes: 5
   mode_seuil: adaptatif      # adaptatif | fixe
   facteur_mediane: 3.0       # rafale si taux >= facteur * mediane
   seuil_fixe_optionnel: null # utilisé seulement si mode_seuil = fixe
