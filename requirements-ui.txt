@@ -2,3 +2,6 @@
 # transitif important (pyarrow, protobuf, requests…) : isolé ici, hors CI.
 -r requirements.txt
 streamlit>=1.30
+# Rechargement à chaud rapide via événements système (sinon Streamlit scrute en boucle
+# et affiche un rappel d'installation au démarrage).
+watchdog>=4.0
