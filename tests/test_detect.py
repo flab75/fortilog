@@ -127,6 +127,14 @@ def test_r8_traffic_outbound_legit_pas_detecte(cfg):
     assert sortant.empty
 
 
+def test_r8_own_wan_ip_not_flagged(cfg):
+    """Trafic vers la propre IP WAN du boîtier ne doit pas déclencher R8
+    (faux positif : FortiGate qui se parle à lui-même via FortiCloud/FortiGuard)."""
+    ev = detect_on_fixture("traffic_outbound_own_wan.log", cfg)
+    sortant = ev[ev["regle"].str.contains("sortant", na=False)]
+    assert sortant.empty, f"Faux positif R8 sur WAN propre : {sortant['detail'].tolist()}"
+
+
 # --- R9 : VPN -> management ---
 
 def test_r9_vpn_to_mgmt_eleve(cfg):

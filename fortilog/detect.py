@@ -76,6 +76,7 @@ def run_detection(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     rogue_re = re.compile("|".join(f"(?:{p})" for p in _pats), re.IGNORECASE) if _pats else None
     legit_dst = set(map(str, sum(cfg.get("destinations_legitimes", {}).values(), [])))
     mgmt_ips = {str(b.get("mgmt")) for b in cfg.get("boitiers", {}).values()}
+    wan_ips = {str(b.get("wan")) for b in cfg.get("boitiers", {}).values() if b.get("wan")}
 
     g = lambda c: str_col(df, c)
     ld, st, rs = g("logdesc"), g("status"), g("reason")
@@ -148,7 +149,7 @@ def run_detection(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
 
     # 8. Réseau : sortie boîtier non listée
     net_out = typ.eq("traffic") & sub.eq("local") & ~dstip.map(intern).fillna(False) \
-        & ~dstip.isin(legit_dst) & dstip.ne("")
+        & ~dstip.isin(legit_dst) & ~dstip.isin(wan_ips) & dstip.ne("")
     flag(net_out, "Trafic sortant du boîtier vers destination non listée", "moyen", ("dstip=" + dstip))
 
     # 9. VPN -> management
