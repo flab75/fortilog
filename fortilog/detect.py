@@ -4,10 +4,34 @@ L'outil SIGNALE ; le verdict reste humain. Aucune conclusion hors logs."""
 from __future__ import annotations
 import ipaddress
 import re
+from pathlib import Path
 import numpy as np
 import pandas as pd
 
 from .common import SEV_ORDER, CFG_ACCOUNT_PATHS, str_col
+
+
+def _load_cidr_networks(path) -> list:
+    """Charge une liste de CIDRs (un par ligne, '#' = commentaire) en réseaux ipaddress.
+    Fichier absent/illisible -> liste vide (dégradation honnête, jamais d'erreur fatale)."""
+    nets = []
+    if not path:
+        return nets
+    p = Path(path)
+    if not p.is_file():
+        return nets
+    try:
+        for line in p.read_text(encoding="utf-8").splitlines():
+            line = line.split("#", 1)[0].strip()
+            if not line:
+                continue
+            try:
+                nets.append(ipaddress.ip_network(line, strict=False))
+            except ValueError:
+                pass
+    except OSError:
+        pass
+    return nets
 
 
 def _internal_map(ips, nets) -> dict:
@@ -64,7 +88,7 @@ def _bruteforce_success_mask(df, ld, srcip, user, window_min, seuil):
     return hit, n_ech, par
 
 
-def run_detection(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+def run_detection(df: pd.DataFrame, cfg: dict, enricher=None) -> pd.DataFrame:
     nets = [ipaddress.ip_network(c.split("#")[0].strip()) for c in cfg.get("plages_internes", [])]
     vpn_net = [ipaddress.ip_network("10.212.134.0/24")]
     admins = set(cfg.get("admins_connus", []))
@@ -95,6 +119,24 @@ def run_detection(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     src_int = srcip.map(intern).fillna(False)
     src_vpn = srcip.map(_internal_map(set(srcip.unique()), vpn_net)).fillna(False)
     dst_legit_net = _internal_map(set(dstip.unique()), _legit_nets) if _legit_nets else {}
+
+    # Destinations Fortinet (FortiGuard/FortiCloud/FortiSASE) — trafic boîtier légitime,
+    # exclues de R8 par DEUX mécanismes complémentaires :
+    #   (A) plages ARIN statiques (fortinet_ranges_file, énumération par propriété : capte
+    #       aussi les anycast hébergés chez AWS, invisibles d'un filtre ASN) ;
+    #   (B) org ASN « FORTINET » au runtime (base iptoasn déjà chargée dans `enricher`).
+    uniq_dst = set(dstip.unique())
+    fortinet_dst = set()
+    _fnets = _load_cidr_networks(cfg.get("fortinet_ranges_file"))
+    if _fnets:
+        fmap = _internal_map(uniq_dst, _fnets)
+        fortinet_dst |= {ip for ip, hit in fmap.items() if hit}
+    if enricher is not None and getattr(enricher, "asn", None) is not None:
+        for ip in uniq_dst:
+            if ip in fortinet_dst:
+                continue
+            if "FORTINET" in (enricher.lookup(ip).get("org") or "").upper():
+                fortinet_dst.add(ip)
 
     parts = []
 
@@ -156,7 +198,7 @@ def run_detection(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
 
     # 8. Réseau : sortie boîtier non listée
     net_out = typ.eq("traffic") & sub.eq("local") & ~dstip.map(intern).fillna(False) \
-        & ~dstip.isin(legit_dst) & ~dstip.isin(wan_ips) \
+        & ~dstip.isin(legit_dst) & ~dstip.isin(wan_ips) & ~dstip.isin(fortinet_dst) \
         & ~dstip.map(dst_legit_net).fillna(False) & dstip.ne("")
     flag(net_out, "Trafic sortant du boîtier vers destination non listée", "moyen", ("dstip=" + dstip))
 

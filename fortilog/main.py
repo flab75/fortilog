@@ -106,12 +106,16 @@ def run(input_dir, config_path, output_dir, ref_conf=None):
         if c in full.columns:
             full[c] = full[c].astype("category")
 
-    events = detect.run_detection(full, cfg)
+    # Enrichisseur chargé AVANT la détection : R8 s'en sert pour exclure les destinations
+    # dont l'org ASN est Fortinet (en plus du fichier de plages statique). Réutilisé ensuite
+    # pour l'enrichissement géo/ASN (aucun double chargement de la base).
+    enricher = geo.load_enricher(cfg)
+    repdb = geo.load_reputation(cfg)
+
+    events = detect.run_detection(full, cfg, enricher)
     chains = correlate.correlate_chains(events, cfg)
 
     # Enrichissement géo/ASN + réputation (hors-ligne, dégradation honnête si pas de base)
-    enricher = geo.load_enricher(cfg)
-    repdb = geo.load_reputation(cfg)
     if not events.empty:
         events = geo.enrich_events(events, cfg, enricher, repdb)
     sources_ext = geo.top_external_sources(full, cfg, enricher,

@@ -165,15 +165,7 @@ def extract_referential(confs: dict) -> dict:
             "ipsec_peers": sorted(peers, key=_ip_key),
             "dns": sorted(dns, key=_ip_key),
             "logging": sorted(logging, key=_ip_key),
-            # Plages Fortinet statiques (FortiGuard/FortiCloud/FortiSASE) — indépendantes du .conf
-            "fortiguard": [
-                "192.35.158.0/24",
-                "208.91.112.0/22",
-                "173.243.128.0/20",
-                "65.210.95.0/24",
-                "139.138.105.0/24",
-                "148.230.32.0/19",
-            ],
+            # Multicast IPv6 lien-local (MLDv2) — trafic réseau normal du boîtier.
             "ipv6_multicast": ["ff02::/16"],
         },
         "sources": list(confs.keys()),
@@ -292,14 +284,15 @@ def render_config_yaml(ref: dict) -> str:
     dl = ref["destinations_legitimes"]
     for group in ("ipsec_peers", "dns", "logging"):
         L.append(f"  {group}: {_inline(dl.get(group, []))}")
-    L.append("  # Plages Fortinet (FortiGuard/FortiCloud/FortiSASE) — trafic boîtier légitime.")
-    L.append("  fortiguard:")
-    for cidr in dl.get("fortiguard", []):
-        L.append(f"    - {cidr}")
     L.append("  # Multicast IPv6 lien-local — trafic réseau normal du boîtier (MLDv2).")
     L.append("  ipv6_multicast:")
     for cidr in dl.get("ipv6_multicast", []):
         L.append(f"    - {cidr}")
+    L.append("")
+    L.append("# Plages Fortinet (FortiGuard/FortiCloud/FortiSASE, anycast AWS inclus) exclues de R8")
+    L.append("# via ce fichier (énumération ARIN) + l'org ASN « FORTINET » au runtime.")
+    L.append("# Régénérer : python -m fortilog.fetch_fortinet_ranges")
+    L.append("fortinet_ranges_file: data/fortinet_ranges.netset")
     L.append("")
 
     L.append(_DEFAULTS.strip("\n"))

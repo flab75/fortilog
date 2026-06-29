@@ -26,18 +26,15 @@ destinations_legitimes:
   ipsec_peers: [203.0.113.1, 198.51.100.1]
   logging_forticloud: [154.52.10.126, 154.52.10.143]
   dns_fortiguard: [96.45.45.45, 96.45.46.46]
-  # Plages Fortinet (FortiGuard updates, FortiCloud, FortiSASE) — trafic boîtier légitime.
-  # Toutes vérifiées whois (org: Fortinet Inc. FTC-58).
-  fortiguard:
-    - 192.35.158.0/24      # FTNT-AWS-ANYCAST-01
-    - 208.91.112.0/22      # Fortinet FortiGuard
-    - 173.243.128.0/20     # Fortinet (whois : 173.243.128.0–143.255)
-    - 65.210.95.0/24       # Fortinet FortiGuard
-    - 139.138.105.0/24     # FTNT-AWS-ANYCAST
-    - 148.230.32.0/19      # Fortinet FortiSASE
   # Multicast IPv6 lien-local — trafic réseau normal du boîtier (MLDv2).
   ipv6_multicast:
     - ff02::/16
+
+# Toutes les plages Fortinet (FortiGuard/FortiCloud/FortiSASE, anycast AWS inclus) sont
+# exclues de R8 par DEUX mécanismes complémentaires : (A) ce fichier statique, énumération
+# ARIN autoritative par propriété (org FTC-58) ; (B) l'org ASN « FORTINET » au runtime via
+# la base iptoasn. Régénérer (A) : python -m fortilog.fetch_fortinet_ranges
+fortinet_ranges_file: data/fortinet_ranges.netset
 
 rafales:
   fenetre_minutes: 60

@@ -36,6 +36,7 @@ fortilog/
 │   ├── confaudit.py # parse + audit de compromission des .conf FortiGate (comptes, accès, automation)
 │   ├── confdiff.py  # comparaison 2 .conf (ajout/suppr/modif) + attribution qui/quand via logs ; CLI
 │   ├── confgen.py   # génère un config.yaml (BROUILLON) depuis des .conf (référentiel dérivé) ; CLI
+│   ├── fetch_fortinet_ranges.py # GÉNÉRATION (réseau) : plages IP Fortinet via ARIN -> .netset ; CLI
 │   ├── analysis.py  # build_analysis : rapport de SYNTHÈSE (décrit/explique, [AVÉRÉ]/[À CONFIRMER])
 │   ├── report.py    # build_report (texte détaillé) + rappel des limites
 │   ├── excel.py     # write_workbook (xlsxwriter, 12 feuilles, « Rapport » en 1re)
@@ -143,6 +144,12 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
 6. Téléchargement de config via GUI → moyen ; de logs → faible.
 7. Automation déclenchée → info (l'event log ne donne pas l'action-type ; vérifier en config).
 8. Trafic sortant du boîtier (traffic/local) vers destination non listée → moyen.
+   Exclusions automatiques : IP WAN propres des boîtiers, `destinations_legitimes`
+   (IP **ou CIDR**), et **toutes les plages Fortinet** (FortiGuard/FortiCloud/FortiSASE)
+   par DEUX mécanismes complémentaires : (A) fichier statique `fortinet_ranges_file`
+   (énumération ARIN par propriété — capte les anycast hébergés chez AWS, invisibles d'un
+   filtre ASN) ; (B) org ASN « FORTINET » au runtime via la base iptoasn (`enricher` passé
+   à `run_detection`). Régénérer (A) : `python -m fortilog.fetch_fortinet_ranges`.
 9. Accès depuis pool VPN (10.212.134.0/24) vers interface de management → élevé.
 10. **UTM/app-ctrl** (P3.2) :
     - 10a. Application **bloquée** par FortiGate → élevé.

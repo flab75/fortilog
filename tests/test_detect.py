@@ -1,5 +1,5 @@
 """Tests pour detect.py : 1 test positif + 1 test négatif par règle (R1-R9)."""
-from tests.conftest import detect_on_fixture
+from tests.conftest import detect_on_fixture, FIXTURES
 
 
 # --- R1 : Login admin réussi ---
@@ -133,6 +133,47 @@ def test_r8_own_wan_ip_not_flagged(cfg):
     ev = detect_on_fixture("traffic_outbound_own_wan.log", cfg)
     sortant = ev[ev["regle"].str.contains("sortant", na=False)]
     assert sortant.empty, f"Faux positif R8 sur WAN propre : {sortant['detail'].tolist()}"
+
+
+def _detect_fortinet_fixture(cfg, enricher=None):
+    from fortilog.main import load_file
+    from fortilog import normalize, detect
+    df = load_file(FIXTURES / "traffic_outbound_fortinet.log")
+    df["timestamp"] = normalize.build_timestamp(df)
+    df["boitier"] = normalize.assign_boitier(df, cfg.get("boitiers", {}), cfg.get("fichiers_boitier"))
+    return detect.run_detection(df, cfg, enricher)
+
+
+def test_r8_fortinet_flagged_without_exclusion(cfg):
+    """Contrôle : sans fichier de plages NI enricher, le trafic vers une IP Fortinet
+    (anycast AWS 192.35.158.84) déclenche bien R8 — la fixture est donc pertinente."""
+    c = dict(cfg); c["fortinet_ranges_file"] = None
+    ev = _detect_fortinet_fixture(c, enricher=None)
+    assert not ev[ev["regle"].str.contains("sortant", na=False)].empty
+
+
+def test_r8_fortinet_excluded_via_file(cfg, tmp_path):
+    """(A) Trafic vers une IP Fortinet exclu de R8 via le fichier de plages ARIN."""
+    ranges = tmp_path / "fortinet.netset"
+    ranges.write_text("# test\n192.35.158.0/24\n", encoding="utf-8")
+    c = dict(cfg); c["fortinet_ranges_file"] = str(ranges)
+    ev = _detect_fortinet_fixture(c, enricher=None)
+    assert ev[ev["regle"].str.contains("sortant", na=False)].empty
+
+
+def test_r8_fortinet_excluded_via_asn(cfg):
+    """(B) Trafic vers une IP Fortinet exclu de R8 via l'org ASN « FORTINET »,
+    même sans fichier de plages (cas des anycast AWS sous ASN Amazon)."""
+    c = dict(cfg); c["fortinet_ranges_file"] = None
+
+    class _FakeEnricher:
+        asn = object()  # présence d'une base ASN
+        def lookup(self, ip):
+            return {"pays": "", "asn": "16509",
+                    "org": "FORTINET" if ip == "192.35.158.84" else "AMAZON-02"}
+
+    ev = _detect_fortinet_fixture(c, enricher=_FakeEnricher())
+    assert ev[ev["regle"].str.contains("sortant", na=False)].empty
 
 
 # --- R9 : VPN -> management ---
