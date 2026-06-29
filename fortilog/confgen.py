@@ -165,6 +165,13 @@ def extract_referential(confs: dict) -> dict:
             "ipsec_peers": sorted(peers, key=_ip_key),
             "dns": sorted(dns, key=_ip_key),
             "logging": sorted(logging, key=_ip_key),
+            # Plages Fortinet statiques (FortiGuard/FortiCloud) — indépendantes du .conf
+            "fortiguard": [
+                "192.35.158.0/24",
+                "208.91.112.0/22",
+                "173.243.138.0/24",
+                "65.210.95.0/24",
+            ],
         },
         "sources": list(confs.keys()),
         "mgmt_heuristique": heuristic_mgmt,
@@ -282,6 +289,10 @@ def render_config_yaml(ref: dict) -> str:
     dl = ref["destinations_legitimes"]
     for group in ("ipsec_peers", "dns", "logging"):
         L.append(f"  {group}: {_inline(dl.get(group, []))}")
+    L.append("  # Plages Fortinet (FortiGuard updates, FortiCloud, licences) — trafic boîtier légitime.")
+    L.append("  fortiguard:")
+    for cidr in dl.get("fortiguard", []):
+        L.append(f"    - {cidr}")
     L.append("")
 
     L.append(_DEFAULTS.strip("\n"))

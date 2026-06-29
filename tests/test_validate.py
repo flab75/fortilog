@@ -61,7 +61,7 @@ def test_invalid_destination_ip(cfg):
     bad = copy.deepcopy(cfg)
     bad["destinations_legitimes"]["dns_fortiguard"] = ["not-ip"]
     errors = validate_config(bad)
-    assert any("IP valide" in e for e in errors)
+    assert any("valide" in e for e in errors)
 
 
 def test_admins_not_list(cfg):

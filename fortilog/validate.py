@@ -63,7 +63,10 @@ def validate_config(cfg: dict) -> list[str]:
                 try:
                     ipaddress.ip_address(str(ip))
                 except ValueError:
-                    errors.append(f"destinations_legitimes.{group}[{j}] : '{ip}' n'est pas une IP valide")
+                    try:
+                        ipaddress.ip_network(str(ip), strict=False)
+                    except ValueError:
+                        errors.append(f"destinations_legitimes.{group}[{j}] : '{ip}' n'est pas une IP ni un CIDR valide")
 
     # Regex de comptes suspects : compilables
     patterns = cfg.get("comptes_suspects_regex", [])

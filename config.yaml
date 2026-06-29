@@ -26,6 +26,12 @@ destinations_legitimes:
   ipsec_peers: [203.0.113.1, 198.51.100.1]
   logging_forticloud: [154.52.10.126, 154.52.10.143]
   dns_fortiguard: [96.45.45.45, 96.45.46.46]
+  # Plages Fortinet (FortiGuard updates, FortiCloud, licences) — trafic boîtier légitime.
+  fortiguard:
+    - 192.35.158.0/24      # FTNT-AWS-ANYCAST-01 (vérifié whois 2026-06-29)
+    - 208.91.112.0/22      # Fortinet FortiGuard
+    - 173.243.138.0/24     # Fortinet FortiGuard
+    - 65.210.95.0/24       # Fortinet FortiGuard
 
 rafales:
   fenetre_minutes: 60

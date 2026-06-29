@@ -74,7 +74,13 @@ def run_detection(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     known_users = admins | vpn_users | locaux
     _pats = [p.replace("(?i)", "") for p in cfg.get("comptes_suspects_regex", [])]
     rogue_re = re.compile("|".join(f"(?:{p})" for p in _pats), re.IGNORECASE) if _pats else None
-    legit_dst = set(map(str, sum(cfg.get("destinations_legitimes", {}).values(), [])))
+    _raw_dst = list(map(str, sum(cfg.get("destinations_legitimes", {}).values(), [])))
+    legit_dst = {e for e in _raw_dst if "/" not in e}   # IP simples → isin()
+    _legit_nets = []
+    for e in _raw_dst:
+        if "/" in e:
+            try: _legit_nets.append(ipaddress.ip_network(e, strict=False))
+            except ValueError: pass
     mgmt_ips = {str(b.get("mgmt")) for b in cfg.get("boitiers", {}).values()}
     wan_ips = {str(b.get("wan")) for b in cfg.get("boitiers", {}).values() if b.get("wan")}
 
@@ -88,6 +94,7 @@ def run_detection(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     intern = _internal_map(uniq_ips, nets)
     src_int = srcip.map(intern).fillna(False)
     src_vpn = srcip.map(_internal_map(set(srcip.unique()), vpn_net)).fillna(False)
+    dst_legit_net = _internal_map(set(dstip.unique()), _legit_nets) if _legit_nets else {}
 
     parts = []
 
@@ -149,7 +156,8 @@ def run_detection(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
 
     # 8. Réseau : sortie boîtier non listée
     net_out = typ.eq("traffic") & sub.eq("local") & ~dstip.map(intern).fillna(False) \
-        & ~dstip.isin(legit_dst) & ~dstip.isin(wan_ips) & dstip.ne("")
+        & ~dstip.isin(legit_dst) & ~dstip.isin(wan_ips) \
+        & ~dstip.map(dst_legit_net).fillna(False) & dstip.ne("")
     flag(net_out, "Trafic sortant du boîtier vers destination non listée", "moyen", ("dstip=" + dstip))
 
     # 9. VPN -> management
