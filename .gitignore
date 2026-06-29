@@ -5,6 +5,7 @@ data/geo/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+*.egg-info/
 
 # Config RÉEL local (vraies données d'infra). Le config.yaml versionné est anonymisé.
 config.local.yaml
