@@ -31,7 +31,7 @@ destinations_legitimes:
   fortiguard:
     - 192.35.158.0/24      # FTNT-AWS-ANYCAST-01
     - 208.91.112.0/22      # Fortinet FortiGuard
-    - 173.243.138.0/24     # Fortinet FortiGuard
+    - 173.243.128.0/20     # Fortinet (whois : 173.243.128.0–143.255)
     - 65.210.95.0/24       # Fortinet FortiGuard
     - 139.138.105.0/24     # FTNT-AWS-ANYCAST
     - 148.230.32.0/19      # Fortinet FortiSASE
