@@ -468,11 +468,13 @@ du README : le mapping est indicatif (aide au reporting), pas une attribution.
    `comportement.fenetre_minutes`, défaut 60) → eleve (SUSPICION) — nécessite la géo ;
    sans base, la détection est silencieusement absente (mention dans la synthèse comme
    pour la géo).
-3. **`RangeTable` dans detect.py** : remplacer `_load_cidr_networks` + `_internal_map`
-   sur `fortinet_ranges_file` (O(IP×réseaux)) par `geo.RangeTable.from_cidr_file`
-   (dichotomie, déjà testé). Comportement identique attendu — vérifier par test A/B sur
-   fixtures (mêmes IP exclues) ; garder `_internal_map` pour `plages_internes` (peu de
-   réseaux, pas le point chaud).
+3. **`RangeTable` dans detect.py** — ✅ FAIT (PR #16 mergée le 2026-07-07) : `_load_cidr_networks`
+   remplacé par `_load_range_table` (retourne `geo.RangeTable`, dichotomie) pour
+   `fortinet_ranges_file` ; usage au point d'appel passé de `_internal_map` (scan linéaire)
+   à `RangeTable.lookup`. `_internal_map` conservé tel quel pour `plages_internes`/
+   `pool_vpn`/`destinations_legitimes` (peu de réseaux, pas le point chaud). Comportement
+   identique vérifié par A/B sur vrais logs T1 (7954 événements, 7591 R8 « sortant »,
+   compte identique avant/après le changement).
 4. **Sorties machine + ergonomie CLI** : options `--json DIR` (chaque table en
    `<nom>.json` orient="records", dates ISO) et `--csv DIR` (idem en .csv UTF-8) SANS
    changer les sorties actuelles ; code retour du CLI = 0 (rien ≥ eleve), 1 (au moins
