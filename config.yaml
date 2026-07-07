@@ -103,6 +103,18 @@ app_ctrl_whitelist:
 rapport:
   max_constats: 5
 
+# Acteurs à risque : score de PRIORISATION par IP externe et par compte.
+# Le score sert à TRIER les entités à investiguer, jamais à conclure.
+acteurs:
+  max_lignes: 100
+  poids: {critique: 100, eleve: 30, moyen: 10, faible: 3, reputation: 50, regle_supplementaire: 20}
+
+# Frise chronologique du rapport : événements >= severite_min, rafales consécutives
+# de même (règle, acteur) dans la même heure regroupées au-delà de max_par_groupe.
+timeline:
+  severite_min: eleve
+  max_par_groupe: 3
+
 # Indice optionnel : rattacher un fichier à un boîtier quand l'IP du boîtier
 # n'apparait pas dans le log (cas des logs event/user, event/vpn, traffic/forward).
 # Correspondance par sous-chaîne du nom de fichier. Laisser vide si inconnu.

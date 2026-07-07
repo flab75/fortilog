@@ -307,3 +307,31 @@ def test_r13_campagne_massive_bornee(cfg):
     ev = detect.run_detection(df, cfg)
     r13 = ev[ev["regle"].str.contains("comptes inexistants", na=False)]
     assert 1 <= len(r13) < 1000, f"{len(r13)} événements R13"
+
+
+def test_run_acteurs_et_frise_end_to_end():
+    """run() complet : table acteurs remplie, feuille Excel « Acteurs a risque »,
+    sections 3bis (acteurs) et FRISE CHRONOLOGIQUE dans le rapport de synthèse."""
+    from fortilog.main import run
+    from openpyxl import load_workbook
+
+    input_dir = Path(tempfile.mkdtemp())
+    output_dir = Path(tempfile.mkdtemp())
+    try:
+        shutil.copy(FIXTURES / "compromission_scenario.log", input_dir / "scenario.log")
+        tables, meta = run(str(input_dir), str(CONFIG_PATH), str(output_dir))
+
+        act = tables["acteurs"]
+        assert not act.empty
+        assert set(act["acteur_type"]) <= {"ip", "compte"}
+        score_col = [c for c in act.columns if c.startswith("score_priorisation")][0]
+        assert act[score_col].is_monotonic_decreasing
+
+        assert "Acteurs à investiguer en priorité" in meta["analysis"]
+        assert "FRISE CHRONOLOGIQUE" in meta["analysis"]
+
+        wb = load_workbook(output_dir / "rapport_fortigate.xlsx")
+        assert "Acteurs a risque" in wb.sheetnames
+    finally:
+        shutil.rmtree(input_dir, ignore_errors=True)
+        shutil.rmtree(output_dir, ignore_errors=True)
