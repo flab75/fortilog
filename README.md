@@ -85,29 +85,32 @@ fortilog --input ./logs --config config.yaml --output ./rapport
 > Sans installation (`pip install`), les commandes `python -m fortilog.main`,
 > `python -m fortilog.confdiff`, `python -m fortilog.confgen` et `python -m fortilog.ack` fonctionnent aussi.
 
-## Sorties (classeur, 13 feuilles)
+## Sorties (classeur, 14 feuilles)
 0. `Rapport` — **synthèse** qui décrit les résultats et explique les problèmes, en distinguant
    **[AVÉRÉ]** (état de config, volumes) de **[À CONFIRMER]** (suspicions). Chaque section
    (config, events, IP externes) détaille les constats les plus sévères individuellement
    (réglable via `rapport.max_constats`, défaut 5). Aussi en tête du rapport texte et dans
    l'onglet « Rapport » de l'UI Streamlit.
 1. `Tableau de bord` — agrégats par boîtier/jour (échecs, logins OK, lockouts, SSL-VPN, passwd_invalid, IP uniques).
-2. `Evenements signales` — événements à risque, colorés par sévérité (info→critique), enrichis portée/pays/ASN/réputation.
-3. `Acteurs a risque` — IP externes et comptes agrégés depuis les événements, triés par un
+2. `UTM descriptif` — top signatures/attaques, domaines/catégories, verdicts pour
+   `utm/ips`/`utm/webfilter`/`utm/dns`/`utm/antivirus` — **descriptif, sans règle
+   d'alerte** (voir « Agrégats descriptifs UTM » ci-dessous).
+3. `Evenements signales` — événements à risque, colorés par sévérité (info→critique), enrichis portée/pays/ASN/réputation.
+4. `Acteurs a risque` — IP externes et comptes agrégés depuis les événements, triés par un
    **score de priorisation transparent** : `score = 100×n_critique + 30×n_eleve + 10×n_moyen
    + 3×n_faible + 50×(réputation non vide) + 20×(nb règles distinctes − 1)` (pondérations :
    `acteurs.poids`, plafond `acteurs.max_lignes` défaut 100). Le score sert à **trier** les
    entités à investiguer, **jamais à conclure**. IP d'infrastructure connue (WAN/mgmt,
    peers/DNS) exclues.
-4. `Chaines suspectes` — séquences corrélées (accès→compte→exfiltration) — **à confirmer**.
-5. `IP malveillantes` — sources présentes dans une liste de réputation (threat intel) — **à confirmer**.
-6. `Audit config` — constats sur les `.conf` FortiGate importés (comptes, accès, automation) — **à confirmer**.
-7. `Comparaison config` — écarts (ajout/suppr/modif) vs une config de référence + attribution qui/quand — **à confirmer**.
-8. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
-9. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
-10. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
-11. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
-12. `Referentiel` — la configuration du « normal » utilisée.
+5. `Chaines suspectes` — séquences corrélées (accès→compte→exfiltration) — **à confirmer**.
+6. `IP malveillantes` — sources présentes dans une liste de réputation (threat intel) — **à confirmer**.
+7. `Audit config` — constats sur les `.conf` FortiGate importés (comptes, accès, automation) — **à confirmer**.
+8. `Comparaison config` — écarts (ajout/suppr/modif) vs une config de référence + attribution qui/quand — **à confirmer**.
+9. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
+10. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
+11. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
+12. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
+13. `Referentiel` — la configuration du « normal » utilisée.
 
 Le rapport de synthèse comporte aussi une **frise chronologique** des événements de
 sévérité ≥ `timeline.severite_min` (défaut `eleve`) : rafales consécutives de même
@@ -195,6 +198,19 @@ attribution.
   peuvent être obsolètes » — et une ligne dédiée dans la feuille **« Referentiel »**.
   L'UI affiche le même rapport (onglet **Rapport**).
 - **Jamais bloquant** : base absente ou vieillie n'interrompt jamais l'analyse.
+
+## Agrégats descriptifs UTM (sans règle d'alerte)
+- Pour `utm/ips`, `utm/webfilter`, `utm/dns`, `utm/antivirus` (types reconnus mais sans
+  règle de détection dédiée), la feuille **« UTM descriptif »** et une section du
+  rapport listent les valeurs les plus fréquentes : signatures/attaques (`ips` :
+  `attack`+`severity`), domaines/catégories bloqués (`webfilter` : `hostname`+
+  `catdesc`+`action` ; `dns` : `qname`+`catdesc`+`action`), verdicts (`antivirus` :
+  `virus`). **Purement descriptif** — aucune sévérité, aucune détection, marqué
+  « (descriptif, sans règle d'alerte) ».
+- Nombre de valeurs par type réglable via `utm_descriptif.top_n` (config.yaml, défaut
+  20). Un champ absent des logs fournis (profil non journalisé par le boîtier) fait
+  omettre la ligne correspondante, jamais de valeur inventée ; un type UTM absent des
+  logs n'apparaît simplement pas.
 
 ## Audit de configuration FortiGate (.conf)
 Importez un ou plusieurs **backups de configuration** (`.conf`) — en CLI (déposez-les

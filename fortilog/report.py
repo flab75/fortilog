@@ -75,6 +75,14 @@ def build_report(tables, meta) -> str:
                      f"{r['lockouts']} lockouts, {r['sslvpn_fails']} SSL-VPN fails, "
                      f"{r['pwd_invalid']} passwd_invalid, {r['ip_sources_uniques']} IP src")
         L.append("")
+    ud = tables.get("utm_descriptifs")
+    if ud is not None and not ud.empty:
+        L.append("AGRÉGATS DESCRIPTIFS UTM (sans règle d'alerte) :")
+        for subtype, grp in ud.groupby("type_utm"):
+            L.append(f"  utm/{subtype} — {grp['libelle'].iloc[0]} :")
+            for _, r in grp.iterrows():
+                L.append(f"    {r['valeur']} : {r['occurrences']} {r['note']}")
+        L.append("")
     ev = tables["events"]
     if ev is not None and not ev.empty:
         L.append(f"ÉVÉNEMENTS SIGNALÉS : {len(ev)}")

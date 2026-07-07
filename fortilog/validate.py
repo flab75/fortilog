@@ -230,6 +230,20 @@ def validate_config(cfg: dict) -> list[str]:
                 except (ValueError, TypeError):
                     errors.append(f"bases.age_max_jours : '{am}' n'est pas un entier valide")
 
+    # Agrégats descriptifs UTM (section optionnelle) : top_n entier > 0
+    ud = cfg.get("utm_descriptif")
+    if ud is not None:
+        if not isinstance(ud, dict):
+            errors.append(f"utm_descriptif : attendu un dictionnaire, reçu {type(ud).__name__}")
+        else:
+            tn = ud.get("top_n")
+            if tn is not None:
+                try:
+                    if int(tn) <= 0:
+                        errors.append(f"utm_descriptif.top_n : doit être > 0, reçu {tn}")
+                except (ValueError, TypeError):
+                    errors.append(f"utm_descriptif.top_n : '{tn}' n'est pas un entier valide")
+
     # Acteurs à risque (section optionnelle) : max_lignes entier > 0, poids numériques >= 0
     ac = cfg.get("acteurs")
     if ac is not None:
