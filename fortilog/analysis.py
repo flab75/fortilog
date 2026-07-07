@@ -107,6 +107,14 @@ def build_analysis(tables, meta, cfg) -> str:
                  f"{sv.get('n_nouveaux', 0)} NOUVEAU(X) depuis l'analyse du {dp}.**{acq}")
         L.append("")
 
+    # Fraîcheur des bases hors-ligne (géo/ASN/réputation) : jamais bloquant
+    for b in meta.get("bases") or []:
+        if b["perime"]:
+            L.append(f"⚠ La base « {b['nom']} » a {b['age_jours']} jours — "
+                     f"les correspondances peuvent être obsolètes.")
+    if any(b["perime"] for b in meta.get("bases") or []):
+        L.append("")
+
     # 1. Périmètre
     h("## 1. Périmètre analysé")
     L.append(f"- Logs : {meta.get('n_files', 0)} fichier(s), "

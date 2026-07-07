@@ -294,3 +294,197 @@ externe » ne s'applique qu'aux accès **admin**.
 5. Ne jamais affaiblir les **garde-fous** (signaler sans conclure ; marquer les
    suspicions ; dégrader proprement sur type inconnu ; ne rien inventer).
 6. **Demande-moi de clarifier, n'invente rien et ne code pas sans mon aval.**
+
+---
+
+## TODO / Backlog (validé 2026-07-02, à implémenter dans cet ordre)
+
+Chaque item ci-dessous est spécifié pour être codé tel quel. Règles transverses,
+valables pour TOUS les items : respecter les garde-fous du projet (signaler sans
+conclure, [À CONFIRMER] sur toute suspicion, ne rien inventer, dégradation honnête),
+préserver l'API `run(input_dir, config_path, output_dir, ref_conf=None) -> (tables, meta)`
+et le CLI existant, tout nouveau paramètre va dans `config.yaml` avec un défaut
+rétro-compatible + validation dans `validate.py` + doc README, tout nouveau code a ses
+tests pytest rapides (fixtures synthétiques) et, si pertinent, un test @slow sur vrais
+logs (chemins via env `FORTILOG_LOGS_T1`/`FORTILOG_LOGS_T2`, skip propre si absents).
+Une PR par item (ou par sous-groupe cohérent), CI verte avant merge.
+
+### P1a — Feuille « Acteurs à risque » — ✅ FAIT (PR #11 mergée le 2026-07-07, module actors.py)
+**Pourquoi** : les sorties actuelles sont des listes plates d'événements ; l'auditeur
+veut d'abord « les 5 entités à investiguer ». **Quoi** : un nouveau module
+`fortilog/actors.py` avec `build_actors(events, full, meta, cfg) -> pd.DataFrame`,
+appelé depuis `main.run()` après l'enrichissement géo/réputation.
+- **Agrégation** : deux axes concaténés dans la même table, colonne `acteur_type`
+  (`ip` | `compte`). Pour chaque IP source externe apparaissant dans `events` et pour
+  chaque `user` apparaissant dans `events` : nb d'événements par sévérité (colonnes
+  `n_critique/n_eleve/n_moyen/n_faible/n_info`), nb de règles distinctes déclenchées,
+  sévérité max, `premiere_vue`/`derniere_vue` (min/max timestamp), volume total
+  d'échecs de login associés (depuis `full` : `logdesc` échec + même srcip/user),
+  `pays`/`asn`/`org` (colonnes déjà présentes sur events si géo dispo, sinon vides),
+  `reputation` (colonne `srcip_reputation`), `boitiers` touchés (liste jointe par « , »).
+- **Score** : transparent et documenté DANS le code et le README — somme pondérée
+  affichable : `score = 100*n_critique + 30*n_eleve + 10*n_moyen + 3*n_faible
+  + 50*(reputation non vide) + 20*(nb_regles_distinctes - 1)`. Le score sert à TRIER,
+  jamais à conclure ; libellé de colonne : `score_priorisation (tri, pas un verdict)`.
+  Pondérations dans `config.yaml` (`acteurs.poids: {critique: 100, eleve: 30, moyen: 10,
+  faible: 3, reputation: 50, regle_supplementaire: 20}`) avec ces défauts.
+- **Bornage** : top `acteurs.max_lignes` (défaut 100) après tri décroissant.
+- **Sorties** : table `tables["acteurs"]` → nouvelle feuille Excel « Acteurs à risque »
+  (insérée après « Evenements signales »), section dans `analysis.py` (top 5 avec le
+  détail des composantes du score) et onglet Streamlit. Exclure les IP d'infrastructure
+  connue (WAN/mgmt boîtiers, peers/DNS — réutiliser l'exclusion de `geo.top_external_sources`).
+- **Tests** : fixtures avec 2 IP (une multi-règles + réputation, une mono-règle) →
+  ordre du tri, composantes exactes du score, exclusion infra, table vide si 0 événement.
+
+### P1b — Timeline des événements critiques — ✅ FAIT (PR #11 mergée le 2026-07-07, actors.build_timeline, section 3ter du rapport)
+**Pourquoi** : le rapport corrèle mais ne raconte pas *quand*. **Quoi** : fonction
+`build_timeline(events, cfg) -> pd.DataFrame` (dans `analysis.py` ou `actors.py`) :
+événements de sévérité ≥ `timeline.severite_min` (défaut `eleve`), triés
+chronologiquement, colonnes `timestamp, boitier, severite, regle, acteur (user ou srcip),
+detail`. Regrouper les rafales : si > `timeline.max_par_groupe` (défaut 3) événements
+consécutifs de même (règle, acteur) dans la même heure, les résumer en une ligne
+« × N similaires de HH:MM à HH:MM » (ne jamais perdre le compte exact).
+- **Sorties** : section « FRISE CHRONOLOGIQUE » dans le rapport texte (format
+  `JJ/MM HH:MM [SEVERITE] règle — acteur — détail`), même contenu dans l'onglet
+  Streamlit « Rapport ». PAS de nouvelle feuille Excel (la feuille événements triée
+  existe déjà) sauf demande ultérieure.
+- **Tests** : ordre chronologique, filtre de sévérité, regroupement de rafale exact
+  (compte préservé), vide si aucun événement ≥ seuil.
+
+### P2 — Suivi entre analyses : état persistant + acquittement — ✅ FAIT (PR #12 mergée le 2026-07-07, suivi.py + ack.py)
+**Pourquoi** : les diffs actuels sont intra-run ; rien ne permet de dire « quoi de neuf
+depuis la dernière analyse » ni d'acquitter un faux positif. **Quoi** : nouveau module
+`fortilog/suivi.py`.
+- **Identité stable d'un constat** : `constat_id = sha256` tronqué à 16 hex de la
+  concaténation normalisée `regle|boitier|acteur|champ_discriminant` — PAS le timestamp
+  ni le volume (un même brute-force sur 2 jours = même constat). Champ discriminant par
+  famille : événements → `user+srcip` ; audit config → `code C1-C6 + objet` ; diff
+  config → `section+objet`. Documenter le choix dans le module.
+- **Fichier d'état** : `etat_suivi.json` dans le dossier `--output` (chemin surchargeable
+  par `--etat PATH`). Structure : `{version: 1, analyses: [{date, n_constats}], constats:
+  {id: {premiere_vue, derniere_vue, statut, regle, resume}}}`. `statut` ∈
+  `nouveau | connu | acquitte`. JSON lisible/éditable à la main (tri des clés, indent 2).
+- **Cycle** : au début de `_emit()`, charger l'état s'il existe ; marquer chaque constat
+  courant `nouveau` (jamais vu) ou `connu` ; les constats `acquitte` restent signalés
+  mais avec le tag `[ACQUITTÉ le JJ/MM/AAAA]` et sont EXCLUS du décompte d'alerte de la
+  synthèse (jamais supprimés : l'outil ne cache rien). Réécrire l'état en fin de run.
+- **Acquittement** : sous-commande CLI `fortilog-ack` (nouveau point d'entrée
+  `fortilog/ack.py`, console-script dans `pyproject.toml`) : `fortilog-ack --etat PATH
+  --list` (table des constats + id + statut) et `fortilog-ack --etat PATH ID [ID…]
+  [--motif "texte"]` (bascule en `acquitte`, motif stocké). Pas d'UI Streamlit pour
+  l'acquittement dans un premier temps (lecture seule : badge « nouveau/connu/acquitté »
+  sur l'onglet événements).
+- **Rapport** : la synthèse (`analysis.py`) ouvre par « X constats dont Y NOUVEAUX
+  depuis l'analyse du JJ/MM » quand un état antérieur existe ; sans état antérieur,
+  aucune mention (comportement actuel inchangé).
+- **Garde-fous** : jamais de suppression silencieuse — un constat acquitté reste visible
+  avec son tag ; le fichier d'état absent/corrompu → warning explicite + run normal
+  sans suivi (dégradation honnête).
+- **Tests** : run 1 → tous `nouveau` ; run 2 mêmes fixtures → tous `connu` ; ack d'un id
+  → tag présent + exclu du décompte ; état corrompu → warning + run OK ; stabilité de
+  `constat_id` (même entrée = même id, timestamp différent = même id).
+
+### P3a — Fraîcheur des bases géo/ASN/réputation
+**Quoi** : à chaque run, calculer l'âge (mtime) de chaque fichier de base utilisé
+(`geo_db_path`, `asn_db_path`, chaque entrée de `reputation_lists`,
+`fortinet_ranges_file`). Stocker dans `meta["bases"]` : `[{nom, path, age_jours}]`.
+- **Seuil** : `bases.age_max_jours` (défaut 90) dans `config.yaml`. Au-delà →
+  avertissement en tête de la synthèse (`analysis.py`) : « ⚠ La base X a N jours —
+  les correspondances peuvent être obsolètes » + même mention dans la feuille
+  « Referentiel » et l'UI. JAMAIS bloquant.
+- **Tests** : base récente → pas de mention ; base vieillie (mtime forcé par
+  `os.utime`) → mention exacte ; base absente → comportement actuel inchangé.
+
+### P3b — Règle R13 : rafale d'échecs `name_invalid` par IP — ✅ FAIT (PR #10 mergée le 2026-07-07)
+NB implémentation : déclenchement au seuil par fenêtre, puis fusion des fenêtres contiguës
+(un événement par (IP, rafale CONTINUE), sinon 4075 événements sur T2 au lieu de 191).
+La campagne T1 est un spray distribué (~12 échecs/h max par IP) → R13 silencieux par
+conception sur T1 ; le test @slow pointe sur T2 (memory-event-system-2026_06_29).
+**Pourquoi** : R2 ne couvre que `passwd_invalid` ; les campagnes sur comptes inexistants
+ne sont visibles que via « Sources externes », sans sévérité ni entrée dans le score P1a.
+**Quoi** : dans `detect.py`, nouvelle règle vectorisée : pour chaque IP source, compter
+les `Admin login failed` avec `reason == "name_invalid"` dans une fenêtre glissante de
+`bruteforce_name_invalid.fenetre_minutes` (défaut 60) ; si ≥ `seuil_echecs` (défaut 20 —
+plus haut que R11 car aucun compte valide n'est en jeu), émettre UN événement par
+(IP, fenêtre) — pas un par ligne (sinon 128k lignes → 128k événements) : prendre la
+ligne du premier échec de la rafale comme porteuse, détail
+`« N tentatives name_invalid depuis srcip entre HH:MM et HH:MM, M comptes distincts »`.
+Sévérité : `moyen` si IP externe, `faible` si interne. Libellé avec « (SUSPICION) » —
+c'est du bruit d'Internet dans la majorité des cas ; l'intérêt est le VOLUME et l'entrée
+au score acteur. Implémentation : réutiliser l'approche `searchsorted` de
+`_bruteforce_success_mask` (groupby IP, timestamps triés, fenêtre glissante).
+- **Tests** : 25 échecs name_invalid même IP en 30 min → 1 événement (pas 25), compte
+  et bornes horaires exacts dans le détail ; 5 échecs → rien ; passwd_invalid n'entre
+  pas dans R13 (déjà couvert par R2) ; @slow sur vrais logs T1 : la campagne massive
+  connue remonte en un nombre raisonnable d'événements (< 1000).
+
+### P3c — Mapping MITRE ATT&CK des règles — ✅ FAIT (PR #10 mergée le 2026-07-07, ID vérifiés sur attack.mitre.org)
+**Quoi** : dans `common.py`, dict statique `MITRE_MAP = {libellé_ou_prefixe_de_regle:
+"Txxxx — nom technique"}` couvrant R1-R13 : R1/R11 → T1078 (Valid Accounts) + T1110
+(Brute Force) pour R2/R11/R13, R3 → T1133 (External Remote Services), R4/R5 → T1136
+(Create Account), R6 → T1005/T1567 (Data from Local System / Exfiltration Over Web),
+R7 → T1053 (Scheduled Task/Job — automation), R8 → T1571/T1041 (Non-Standard Port /
+Exfil Over C2), R9 → T1021 (Remote Services), R10 → T1090 (Proxy), R12 → T1078
+(anomalie d'usage de compte valide). VÉRIFIER chaque ID sur attack.mitre.org avant de
+figer (ne pas faire confiance à cette liste de mémoire). Colonne `mitre` ajoutée aux
+événements dans `run_detection()` (map sur `regle`, vide si pas de correspondance),
+reprise dans la feuille Excel « Evenements signales » et l'export. Une ligne en légende
+du README : le mapping est indicatif (aide au reporting), pas une attribution.
+- **Tests** : chaque règle des fixtures porte un `mitre` non vide et au format
+  `T\d{4}( — .+)?` ; règle inconnue → champ vide (pas d'erreur).
+
+### P4 — Correctifs courts — ✅ FAIT (PR #9 mergée le 2026-07-07)
+1. **Pool VPN en dur** (`detect.py` : `vpn_net = [ipaddress.ip_network("10.212.134.0/24")]`)
+   → nouvelle clé `pool_vpn` dans `config.yaml` (défaut `10.212.134.0/24` si absente,
+   rétro-compatible), validée par `validate.py` (CIDR), utilisée par R9. Mettre à jour
+   le config.yaml versionné (valeur anonymisée actuelle) + confgen (dériver le pool
+   depuis `vpn ssl settings` → `tunnel-ip-pools` si présent dans le .conf, sinon défaut).
+2. **R1 avec `srcip` vide** : un login admin réussi SANS srcip est aujourd'hui classé
+   « externe → critique » (une chaîne vide n'est pas interne). Corriger : les lignes
+   `srcip == ""` sortent du masque « externe » et reçoivent leur propre libellé
+   « Login admin réussi, source indéterminée (srcip absent) » sévérité `moyen`, jamais
+   inventer une portée. Test : fixture login OK sans srcip → moyen/indéterminé, pas critique.
+3. **Diff multi-boîtiers** (`main.py` : seuls les 2 premiers boîtiers de `unique()` sont
+   comparés, ordre non déterministe) : comparer TOUTES les paires de boîtiers connus
+   (ordre alphabétique, `itertools.combinations`) — avec 2 boîtiers le comportement est
+   identique à l'actuel. Test : 3 boîtiers synthétiques → 3 paires comparées, ordre stable.
+
+### P5 — Fil de l'eau (chacun autonome, prendre dans l'ordre au choix)
+1. **Agrégats descriptifs UTM sans règles** : pour `utm/ips`, `utm/webfilter`, `utm/dns`,
+   `utm/antivirus` présents dans les logs, ajouter au tableau de bord (feuille « Tableau
+   de bord » + section rapport) des top-N PUREMENT DESCRIPTIFS : top signatures/attaques
+   (ips : champs `attack`/`severity`), top domaines/catégories bloqués (webfilter :
+   `hostname`/`catdesc`/`action`), top verdicts (antivirus). AUCUNE sévérité, aucune
+   détection — description marquée « (descriptif, sans règle d'alerte) ». Ne s'appuyer
+   QUE sur des champs réellement présents dans les fichiers fournis ; champ absent →
+   omettre la ligne (ne rien inventer). Tests avec fixtures minimales par type.
+2. **Nouveauté comportementale par compte admin** : première IP source / premier pays
+   jamais vu pour un compte admin sur la période analysée → info (SUSPICION
+   comportementale). NB : sans l'état persistant P2, « jamais vu » = « pas vu plus tôt
+   dans la MÊME analyse » (le dire dans le libellé) ; brancher sur l'état P2 quand il
+   existe (`premiere_vue` par couple compte×pays). *Impossible travel* (2 pays
+   incompatibles < `comportement.fenetre_minutes`, défaut 60) → eleve (SUSPICION) —
+   nécessite la géo ; sans base, la détection est silencieusement absente (mention dans
+   la synthèse comme pour la géo).
+3. **`RangeTable` dans detect.py** : remplacer `_load_cidr_networks` + `_internal_map`
+   sur `fortinet_ranges_file` (O(IP×réseaux)) par `geo.RangeTable.from_cidr_file`
+   (dichotomie, déjà testé). Comportement identique attendu — vérifier par test A/B sur
+   fixtures (mêmes IP exclues) ; garder `_internal_map` pour `plages_internes` (peu de
+   réseaux, pas le point chaud).
+4. **Sorties machine + ergonomie CLI** : options `--json DIR` (chaque table en
+   `<nom>.json` orient="records", dates ISO) et `--csv DIR` (idem en .csv UTF-8) SANS
+   changer les sorties actuelles ; code retour du CLI = 0 (rien ≥ eleve), 1 (au moins
+   un eleve), 2 (au moins un critique) — documenté dans README pour usage cron/CI, et
+   NE PAS casser les tests existants qui appellent `run()` (le code retour vit dans
+   `main()` seulement) ; `--quiet` (supprime le print du rapport, garde les fichiers) ;
+   progression pendant l'ingestion : une ligne par fichier `« fichier N/M : nom (X
+   lignes) »` sur stderr, désactivée par `--quiet`.
+5. **P5 mémoire phase 3** (uniquement si un besoin réel > 600 Mo apparaît) : réduire les
+   transitoires de `detect.run_detection` — `flag()` copie chaque sous-frame et `str_col`
+   densifie les colonnes `category` ; piste : ne matérialiser que les colonnes utiles au
+   détail dans `flag()`, et/ou chunking par lot avec fusion des événements. Mesurer
+   avant/après sur vrais logs T1 (procédure : pic RSS, sorties identiques — cf. P5
+   phases 1+2).
+6. **UI Streamlit** : filtres persistants (sévérité, boîtier, règle, plage de dates)
+   sur l'onglet événements via `st.session_state`, + bouton « télécharger la sélection
+   filtrée » (CSV). Logique de filtrage dans `ui_helpers.py` (testable hors UI).
