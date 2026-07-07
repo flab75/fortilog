@@ -216,6 +216,20 @@ def validate_config(cfg: dict) -> list[str]:
                 if not isinstance(seq, list) or len(seq) < 2:
                     errors.append("correlation.sequence_requise : attendu une liste d'au moins 2 étapes")
 
+    # Fraîcheur des bases (section optionnelle) : age_max_jours entier > 0
+    bs = cfg.get("bases")
+    if bs is not None:
+        if not isinstance(bs, dict):
+            errors.append(f"bases : attendu un dictionnaire, reçu {type(bs).__name__}")
+        else:
+            am = bs.get("age_max_jours")
+            if am is not None:
+                try:
+                    if int(am) <= 0:
+                        errors.append(f"bases.age_max_jours : doit être > 0, reçu {am}")
+                except (ValueError, TypeError):
+                    errors.append(f"bases.age_max_jours : '{am}' n'est pas un entier valide")
+
     # Acteurs à risque (section optionnelle) : max_lignes entier > 0, poids numériques >= 0
     ac = cfg.get("acteurs")
     if ac is not None:

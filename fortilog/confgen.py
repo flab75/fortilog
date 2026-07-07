@@ -248,6 +248,10 @@ geo_db_path: data/geo/dbip-country-lite.csv
 asn_db_path: data/geo/ip2asn-v4.tsv
 top_sources_externes: 50
 
+# Fraîcheur des bases hors-ligne : avertissement (jamais bloquant) au-delà de N jours.
+bases:
+  age_max_jours: 90
+
 # Listes de réputation IP HORS-LIGNE (threat intel, optionnel).
 reputation_lists:
   - { nom: "FireHOL L1", path: data/geo/firehol_level1.netset }

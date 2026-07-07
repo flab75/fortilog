@@ -1,8 +1,11 @@
 """Tests d'intégration : scénario de compromission et scénario bénin sur fixtures,
 plus tests sur vrais logs (marqués slow)."""
+import os
+import time
 import pytest
 import shutil
 import tempfile
+import yaml
 from pathlib import Path
 from tests.conftest import (detect_on_fixture, require_real_logs, FIXTURES, CONFIG_PATH,
                             REAL_LOGS_T1, REAL_LOGS_T2)
@@ -332,6 +335,42 @@ def test_run_acteurs_et_frise_end_to_end():
 
         wb = load_workbook(output_dir / "rapport_fortigate.xlsx")
         assert "Acteurs a risque" in wb.sheetnames
+    finally:
+        shutil.rmtree(input_dir, ignore_errors=True)
+        shutil.rmtree(output_dir, ignore_errors=True)
+
+
+def test_run_base_perimee_avertit_end_to_end():
+    """run() complet avec une base géo vieillie : avertissement en tête de synthèse
+    et ligne dédiée dans la feuille « Referentiel »."""
+    from fortilog.main import run
+    from openpyxl import load_workbook
+
+    input_dir = Path(tempfile.mkdtemp())
+    output_dir = Path(tempfile.mkdtemp())
+    try:
+        shutil.copy(FIXTURES / "compromission_scenario.log", input_dir / "scenario.log")
+
+        geo_db = output_dir / "geo_vieille.csv"
+        geo_db.write_text("start_ip,end_ip,country_code\n")
+        ancien = time.time() - 100 * 86400
+        os.utime(geo_db, (ancien, ancien))
+
+        cfg = yaml.safe_load(CONFIG_PATH.read_text())
+        cfg["geo_db_path"] = str(geo_db)
+        cfg["bases"] = {"age_max_jours": 90}
+        config_path = output_dir / "config_test.yaml"
+        config_path.write_text(yaml.safe_dump(cfg))
+
+        tables, meta = run(str(input_dir), str(config_path), str(output_dir))
+
+        assert any(b["nom"] == "Géo (pays)" and b["perime"] for b in meta["bases"])
+        assert "a 100 jours" in meta["analysis"]
+
+        wb = load_workbook(output_dir / "rapport_fortigate.xlsx")
+        ref_ws = wb["Referentiel"]
+        cles = [row[0] for row in ref_ws.iter_rows(min_row=2, values_only=True)]
+        assert any(c == "base:Géo (pays)" for c in cles)
     finally:
         shutil.rmtree(input_dir, ignore_errors=True)
         shutil.rmtree(output_dir, ignore_errors=True)

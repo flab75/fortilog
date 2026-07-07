@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi
+from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases
 from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
 from .validate import validate_config
 
@@ -27,6 +27,14 @@ def _emit(out, tables, meta, cfg, etat_path=None):
     """Calcule la synthèse, écrit le classeur Excel + le rapport texte, renvoie (tables, meta)."""
     # Suivi entre analyses : annote les tables (nouveau/connu/acquitté) AVANT la synthèse.
     suivi.appliquer_suivi(tables, meta, etat_path or (out / suivi.FICHIER_ETAT))
+    meta["bases"] = bases.check_bases(cfg)
+    if meta["bases"] and "ref" in tables:
+        age_rows = [{"clé": f"base:{b['nom']}",
+                    "valeur": (f"{b['path']} (âge inconnu)" if b["age_jours"] is None
+                              else f"{b['path']} ({b['age_jours']} j"
+                                   f"{', PÉRIMÉE' if b['perime'] else ''})")}
+                   for b in meta["bases"]]
+        tables["ref"] = pd.concat([tables["ref"], pd.DataFrame(age_rows)], ignore_index=True)
     rapport = analysis.build_analysis(tables, meta, cfg)
     meta["analysis"] = rapport
     xlsx_path = out / "rapport_fortigate.xlsx"

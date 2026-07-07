@@ -186,6 +186,16 @@ attribution.
   → une IP **interne** n'est jamais signalée (évite le faux positif classique).
 - **À CONFIRMER** : présence en liste = signal fort, pas une preuve (listes parfois larges/datées).
 
+## Fraîcheur des bases géo/ASN/réputation
+- À chaque run, l'âge (mtime) de chaque fichier de base configuré (`geo_db_path`,
+  `asn_db_path`, `fortinet_ranges_file`, chaque entrée de `reputation_lists`) est calculé
+  et stocké dans `meta["bases"]` (`[{nom, path, age_jours, perime}]`).
+- **Seuil** : `bases.age_max_jours` dans `config.yaml` (défaut 90 jours). Au-delà,
+  avertissement en tête du rapport — « ⚠ La base « X » a N jours — les correspondances
+  peuvent être obsolètes » — et une ligne dédiée dans la feuille **« Referentiel »**.
+  L'UI affiche le même rapport (onglet **Rapport**).
+- **Jamais bloquant** : base absente ou vieillie n'interrompt jamais l'analyse.
+
 ## Audit de configuration FortiGate (.conf)
 Importez un ou plusieurs **backups de configuration** (`.conf`) — en CLI (déposez-les
 dans le dossier `--input`) ou via l'UI Streamlit (zone de dépôt `.conf`). L'outil parse
