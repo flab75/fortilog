@@ -3,11 +3,13 @@
 from __future__ import annotations
 import argparse
 import itertools
+import sys
 from pathlib import Path
 import pandas as pd
 import yaml
 
 from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats
+from .common import SEV_ORDER
 from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
 from .validate import validate_config
 
@@ -23,7 +25,7 @@ def _diff_boitiers(full: pd.DataFrame) -> list[pd.DataFrame]:
     return out
 
 
-def _emit(out, tables, meta, cfg, etat_path=None):
+def _emit(out, tables, meta, cfg, etat_path=None, quiet=False):
     """Calcule la synthèse, écrit le classeur Excel + le rapport texte, renvoie (tables, meta)."""
     # Suivi entre analyses : annote les tables (nouveau/connu/acquitté) AVANT la synthèse.
     suivi.appliquer_suivi(tables, meta, etat_path or (out / suivi.FICHIER_ETAT))
@@ -41,8 +43,9 @@ def _emit(out, tables, meta, cfg, etat_path=None):
     excel.write_workbook(str(xlsx_path), tables, cfg, analysis_text=rapport)
     txt = rapport + "\n\n" + ("=" * 70) + "\n" + report.build_report(tables, meta)
     (out / "rapport_fortigate.txt").write_text(txt, encoding="utf-8")
-    print(txt)
-    print(f"\n>> Classeur : {xlsx_path}")
+    if not quiet:
+        print(txt)
+        print(f"\n>> Classeur : {xlsx_path}")
     return tables, meta
 
 
@@ -66,7 +69,7 @@ def _compute_config_diff(ref_conf, conf_files, logs_dir, cfg, boitier_for):
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=cols)
 
 
-def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None):
+def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet=False):
     cfg = yaml.safe_load(Path(config_path).read_text())
     errors = validate_config(cfg)
     if errors:
@@ -105,10 +108,11 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None):
                 "geo_available": False, "reputation_available": False,
                 "n_configs": len(conf_files), "n_config_changes": len(config_diff),
                 "config_ref": Path(ref_conf).name if ref_conf else None}
-        return _emit(out, tables, meta, cfg, etat_path)
+        return _emit(out, tables, meta, cfg, etat_path, quiet)
 
     parts, meta_files = [], []
-    for f in files:
+    n_files = len(files)
+    for i, f in enumerate(files, start=1):
         t, s, reconnu = ingest.detect_type(f)
         df = load_file(f, columns=ingest.ANALYSIS_COLS)  # colonnes d'affichage relues en 2ᵉ passe
         df["type"] = df["type"].replace("", t)
@@ -116,6 +120,8 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None):
         meta_files.append({"name": f.name, "type": t, "subtype": s,
                            "reconnu": reconnu, "rows": len(df)})
         parts.append(df)
+        if not quiet:
+            print(f"fichier {i}/{n_files} : {f.name} ({len(df)} lignes)", file=sys.stderr)
     full = pd.concat(parts, ignore_index=True)
     del parts  # libère les frames par fichier (évite le doublement transitoire au concat)
 
@@ -227,7 +233,34 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None):
     tables["acteurs"] = actors.build_actors(events, full, meta, cfg)
     tables["utm_descriptifs"] = utm_stats.build_utm_descriptifs(full, files, cfg)
 
-    return _emit(out, tables, meta, cfg, etat_path)
+    return _emit(out, tables, meta, cfg, etat_path, quiet)
+
+
+def _exit_code(tables) -> int:
+    """0 : rien >= eleve. 1 : au moins un eleve. 2 : au moins un critique."""
+    ev = tables.get("events")
+    if ev is None or ev.empty or "severite" not in ev.columns:
+        return 0
+    pire = ev["severite"].map(lambda s: SEV_ORDER.get(s, 0)).max()
+    if pire >= SEV_ORDER["critique"]:
+        return 2
+    if pire >= SEV_ORDER["eleve"]:
+        return 1
+    return 0
+
+
+def _write_tables(tables, dirpath, fmt) -> None:
+    """Écrit chaque table de `tables` en <dirpath>/<nom>.<fmt> (json ou csv), en plus
+    des sorties habituelles (classeur Excel, rapport texte) — ne les remplace pas."""
+    d = Path(dirpath)
+    d.mkdir(parents=True, exist_ok=True)
+    for nom, df in tables.items():
+        if not isinstance(df, pd.DataFrame):
+            continue
+        if fmt == "json":
+            df.to_json(d / f"{nom}.json", orient="records", date_format="iso", force_ascii=False)
+        else:
+            df.to_csv(d / f"{nom}.csv", index=False, encoding="utf-8")
 
 
 def main():
@@ -239,8 +272,19 @@ def main():
                     help="config .conf de référence/validée à comparer aux .conf du dossier")
     ap.add_argument("--etat", dest="etat", default=None,
                     help="chemin du fichier d'état de suivi (défaut : <output>/etat_suivi.json)")
+    ap.add_argument("--json", dest="json_dir", default=None, metavar="DIR",
+                    help="écrit chaque table en <DIR>/<nom>.json (orient=records, dates ISO), en plus des sorties habituelles")
+    ap.add_argument("--csv", dest="csv_dir", default=None, metavar="DIR",
+                    help="écrit chaque table en <DIR>/<nom>.csv (UTF-8), en plus des sorties habituelles")
+    ap.add_argument("--quiet", action="store_true",
+                    help="supprime le rapport imprimé et la progression d'ingestion (les fichiers sont toujours écrits)")
     a = ap.parse_args()
-    run(a.input, a.config, a.output, ref_conf=a.ref_conf, etat_path=a.etat)
+    tables, _ = run(a.input, a.config, a.output, ref_conf=a.ref_conf, etat_path=a.etat, quiet=a.quiet)
+    if a.json_dir:
+        _write_tables(tables, a.json_dir, "json")
+    if a.csv_dir:
+        _write_tables(tables, a.csv_dir, "csv")
+    raise SystemExit(_exit_code(tables))
 
 
 if __name__ == "__main__":

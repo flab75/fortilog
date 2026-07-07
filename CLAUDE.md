@@ -475,14 +475,16 @@ du README : le mapping est indicatif (aide au reporting), pas une attribution.
    `pool_vpn`/`destinations_legitimes` (peu de réseaux, pas le point chaud). Comportement
    identique vérifié par A/B sur vrais logs T1 (7954 événements, 7591 R8 « sortant »,
    compte identique avant/après le changement).
-4. **Sorties machine + ergonomie CLI** : options `--json DIR` (chaque table en
-   `<nom>.json` orient="records", dates ISO) et `--csv DIR` (idem en .csv UTF-8) SANS
-   changer les sorties actuelles ; code retour du CLI = 0 (rien ≥ eleve), 1 (au moins
-   un eleve), 2 (au moins un critique) — documenté dans README pour usage cron/CI, et
-   NE PAS casser les tests existants qui appellent `run()` (le code retour vit dans
-   `main()` seulement) ; `--quiet` (supprime le print du rapport, garde les fichiers) ;
-   progression pendant l'ingestion : une ligne par fichier `« fichier N/M : nom (X
-   lignes) »` sur stderr, désactivée par `--quiet`.
+4. **Sorties machine + ergonomie CLI** — ✅ FAIT (PR #17 mergée le 2026-07-07) : options
+   `--json DIR` / `--csv DIR` (`_write_tables` dans `main.py`, en plus des sorties
+   habituelles, ne les remplacent pas) ; code retour CLI = 0/1/2 (`_exit_code`, basé sur
+   `SEV_ORDER`), calculé et levé (`SystemExit`) uniquement dans `main()` — `run()` garde
+   sa signature/contrat (nouveau paramètre `quiet=False` rétro-compatible, thread jusqu'à
+   `_emit()` et à la boucle d'ingestion) ; `--quiet` supprime le rapport (stdout) et la
+   progression d'ingestion (stderr) mais garde tous les fichiers ; progression : une
+   ligne par fichier `fichier N/M : nom (X lignes)` sur stderr. Testé (`tests/test_cli.py`)
+   + smoke-test réel T1 (`--json`, `--quiet`, code retour 2 conforme aux critiques
+   présents).
 5. **P5 mémoire phase 3** (uniquement si un besoin réel > 600 Mo apparaît) : réduire les
    transitoires de `detect.run_detection` — `flag()` copie chaque sous-frame et `str_col`
    densifie les colonnes `category` ; piste : ne matérialiser que les colonnes utiles au
