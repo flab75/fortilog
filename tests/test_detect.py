@@ -293,3 +293,59 @@ def test_r12_business_hours_pas_detecte(cfg):
     ev = detect_on_fixture("benign_admin_activity.log", cfg)
     r12 = ev[ev["regle"].str.contains("hors horaires", na=False)]
     assert r12.empty
+
+
+# --- R13 : rafale d'échecs name_invalid par IP ---
+
+def test_r13_rafale_un_seul_evenement(cfg):
+    """25 échecs name_invalid même IP en 25 min -> UN événement (pas 25), détail exact."""
+    ev = detect_on_fixture("bruteforce_name_burst.log", cfg)
+    r13 = ev[ev["regle"].str.contains("comptes inexistants", na=False)]
+    assert len(r13) == 1
+    d = r13["detail"].iloc[0]
+    assert "25 tentatives name_invalid depuis 198.51.100.77" in d
+    assert "entre 23/06 03:00 et 23/06 03:24" in d
+    assert "5 comptes distincts" in d
+    assert (r13["severite"] == "moyen").all()   # IP externe
+
+
+def test_r13_sous_seuil_rien(cfg):
+    """Moins de seuil_echecs (20) échecs -> aucun événement R13."""
+    ev = detect_on_fixture("bruteforce_name.log", cfg)
+    assert ev[ev["regle"].str.contains("comptes inexistants", na=False)].empty
+
+
+def test_r13_passwd_invalid_exclu(cfg):
+    """passwd_invalid ne déclenche pas R13 (déjà couvert par R2)."""
+    cfg["bruteforce_name_invalid"] = {"fenetre_minutes": 60, "seuil_echecs": 1}
+    ev = detect_on_fixture("bruteforce_passwd.log", cfg)
+    assert ev[ev["regle"].str.contains("comptes inexistants", na=False)].empty
+
+
+# --- Mapping MITRE ATT&CK ---
+
+def test_mitre_non_vide_et_format_sur_toutes_les_regles(cfg):
+    """Chaque événement des fixtures porte un mitre non vide au format Txxxx — nom."""
+    import re
+    pat = re.compile(r"^T\d{4}( — .+)?$")
+    fixtures = ["login_admin_ext.log", "login_admin_int_connu.log",
+                "login_admin_int_inconnu.log", "login_admin_no_srcip.log",
+                "bruteforce_passwd.log", "vpn_tunnel_inconnu.log",
+                "config_account_add.log", "download_config.log", "download_logs.log",
+                "automation.log", "vpn_to_mgmt.log", "app_ctrl_block.log",
+                "app_ctrl_critical_not_wl.log", "bruteforce_success_ext.log",
+                "horaires_offhours.log", "bruteforce_name_burst.log",
+                "compromission_scenario.log"]
+    for fx in fixtures:
+        ev = detect_on_fixture(fx, cfg)
+        assert not ev.empty, f"{fx} : aucune détection"
+        assert (ev["mitre"] != "").all(), f"{fx} : mitre vide pour {set(ev.loc[ev['mitre'] == '', 'regle'])}"
+        assert all(pat.match(m) for m in ev["mitre"]), f"{fx} : format mitre invalide"
+
+
+def test_mitre_regle_inconnue_champ_vide():
+    """Règle absente du mapping -> champ vide, pas d'erreur."""
+    import pandas as pd
+    from fortilog.common import MITRE_MAP
+    s = pd.Series(["Règle inventée"]).map(MITRE_MAP).fillna("")
+    assert s.iloc[0] == ""

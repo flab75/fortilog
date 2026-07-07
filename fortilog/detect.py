@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .common import SEV_ORDER, CFG_ACCOUNT_PATHS, str_col
+from .common import SEV_ORDER, CFG_ACCOUNT_PATHS, MITRE_MAP, str_col
 
 
 def _load_cidr_networks(path) -> list:
@@ -265,8 +265,50 @@ def run_detection(df: pd.DataFrame, cfg: dict, enricher=None) -> pd.DataFrame:
         flag(odd, "Login admin hors horaires ouvrés (SUSPICION comportementale)", "faible",
              ("user=" + user + " srcip=" + srcip + " à " + quand))
 
+    # 13. Rafale d'échecs name_invalid par IP : brute-force sur comptes INEXISTANTS.
+    #     Bruit d'Internet dans la majorité des cas — l'intérêt est le VOLUME : UN seul
+    #     événement par (IP, fenêtre), porté par le premier échec de la rafale.
+    bni = cfg.get("bruteforce_name_invalid", {})
+    bni_win = int(bni.get("fenetre_minutes", 60))
+    bni_seuil = int(bni.get("seuil_echecs", 20))
+    if "timestamp" in df.columns:
+        ts = df["timestamp"]
+        ni = ld.eq("Admin login failed") & rs.eq("name_invalid") & srcip.ne("") & ts.notna()
+        if ni.any():
+            hit13 = pd.Series(False, index=df.index)
+            det13 = pd.Series("", index=df.index)
+            win64 = np.timedelta64(bni_win, "m")
+            ndf = pd.DataFrame({"t": ts[ni], "ip": srcip[ni], "u": user[ni]}).sort_values("t")
+            for ip, grp in ndf.groupby("ip"):
+                t_arr = grp["t"].to_numpy()
+                rows = grp.index.to_numpy()
+                users_arr = grp["u"].to_numpy()
+                i, n = 0, len(t_arr)
+                while i < n:
+                    j = int(np.searchsorted(t_arr, t_arr[i] + win64, "right"))
+                    if j - i >= bni_seuil:
+                        # déclenchée au seuil ; la rafale s'étend ensuite tant que les
+                        # échecs s'enchaînent à moins d'une fenêtre d'écart (une campagne
+                        # soutenue sur des heures = UN événement, pas un par fenêtre)
+                        while j < n and t_arr[j] - t_arr[j - 1] <= win64:
+                            j += 1
+                        first = rows[i]
+                        hit13.at[first] = True
+                        h0 = pd.Timestamp(t_arr[i]).strftime("%d/%m %H:%M")
+                        h1 = pd.Timestamp(t_arr[j - 1]).strftime("%d/%m %H:%M")
+                        det13.at[first] = (
+                            f"{j - i} tentatives name_invalid depuis {ip} entre {h0} et {h1}, "
+                            f"{pd.unique(users_arr[i:j]).size} comptes distincts")
+                        i = j
+                    else:
+                        i += 1
+            lbl13 = "Rafale d'échecs sur comptes inexistants — name_invalid (SUSPICION)"
+            flag(hit13 & ~src_int, lbl13, "moyen", det13)
+            flag(hit13 & src_int, lbl13, "faible", det13)
+
     if not parts:
-        return df.iloc[0:0].assign(regle="", severite="", detail="", sev_rank=0)
+        return df.iloc[0:0].assign(regle="", severite="", detail="", mitre="", sev_rank=0)
     out = pd.concat(parts)
+    out["mitre"] = out["regle"].map(MITRE_MAP).fillna("")  # indicatif ; règle inconnue -> vide
     out["sev_rank"] = out["severite"].map(SEV_ORDER).fillna(0).astype(int)
     return out.sort_values("sev_rank", ascending=False)
