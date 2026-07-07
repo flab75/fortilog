@@ -2,6 +2,7 @@
 """Point d'entrée CLI : orchestre ingestion -> parsing -> normalisation -> détection -> comparaison -> sorties."""
 from __future__ import annotations
 import argparse
+import itertools
 from pathlib import Path
 import pandas as pd
 import yaml
@@ -9,6 +10,17 @@ import yaml
 from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis
 from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
 from .validate import validate_config
+
+
+def _diff_boitiers(full: pd.DataFrame) -> list[pd.DataFrame]:
+    """Diff d'entités entre TOUTES les paires de boîtiers connus (ordre alphabétique stable)."""
+    boits = sorted(b for b in full["boitier"].unique() if b != "inconnu")
+    out = []
+    for a, b in itertools.combinations(boits, 2):
+        d = compare.diff_entities(full[full.boitier == a], full[full.boitier == b], a, b)
+        if not d.empty:
+            out.append(d)
+    return out
 
 
 def _emit(out, tables, meta, cfg):
@@ -146,12 +158,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None):
             d = compare.diff_entities(by_day[a], by_day[b], f"{boitier} {a}", f"{boitier} {b}")
             if not d.empty:
                 diffs.append(d)
-    boits = [b for b in full["boitier"].unique() if b != "inconnu"]
-    if len(boits) >= 2:
-        d = compare.diff_entities(full[full.boitier == boits[0]],
-                                  full[full.boitier == boits[1]], boits[0], boits[1])
-        if not d.empty:
-            diffs.append(d)
+    diffs.extend(_diff_boitiers(full))
     diff = pd.concat(diffs, ignore_index=True) if diffs else pd.DataFrame()
 
     # Feuille « Données unifiées » : le frame d'analyse ne porte pas les colonnes

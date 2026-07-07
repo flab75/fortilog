@@ -75,3 +75,18 @@ def test_real_conf_t1():
         ipaddress.ip_network(cidr, strict=False)  # lève ValueError si invalide
     text = confgen.render_config_yaml(ref)
     assert validate_config(yaml.safe_load(text)) == []
+
+
+def test_extract_pool_vpn_depuis_tunnel_ip_pools():
+    """vpn ssl settings -> tunnel-ip-pools -> objet firewall address (iprange)."""
+    o = confgen.extract_one(SAMPLE, "fallback")
+    assert o["pool_vpn"] == ["10.212.134.0/24"]
+    text = confgen.render_config_yaml(confgen.extract_referential({"fw.conf": SAMPLE}))
+    assert yaml.safe_load(text)["pool_vpn"] == ["10.212.134.0/24"]
+
+
+def test_render_pool_vpn_defaut_si_absent():
+    """Pool introuvable dans le .conf -> défaut projet rendu (commenté à vérifier)."""
+    no_pool = SAMPLE.replace('set tunnel-ip-pools "SSLVPN_TUNNEL_ADDR1"', "")
+    text = confgen.render_config_yaml(confgen.extract_referential({"fw.conf": no_pool}))
+    assert yaml.safe_load(text)["pool_vpn"] == "10.212.134.0/24"

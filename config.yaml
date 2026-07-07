@@ -22,6 +22,10 @@ plages_internes:
   - 10.20.0.0/16       # T2
   - 10.10.0.0/16       # VLAN internes T1
 
+# Pool d'adresses SSL-VPN (R9 : accès depuis le pool VPN vers le management).
+# Un CIDR ou une liste de CIDR. Absent -> défaut 10.212.134.0/24 (rétro-compatible).
+pool_vpn: 10.212.134.0/24
+
 destinations_legitimes:
   ipsec_peers: [203.0.113.1, 198.51.100.1]
   logging_forticloud: [154.52.10.126, 154.52.10.143]

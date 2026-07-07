@@ -1,0 +1,1 @@
+date=2026-06-23 time=14:00:01 eventtime=1782216001000000000 tz="+0200" logid="0100032001" type="event" subtype="system" level="information" vd="root" logdesc="Admin login successful" sn="1000000001" user="adminA" ui="console" method="console" action="login" status="success" reason="none" profile="super_admin" msg="Administrator adminA logged in successfully from console"

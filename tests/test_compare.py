@@ -46,3 +46,20 @@ def test_diff_entities_empty_same(cfg):
     diff = compare.diff_entities(df, df, "same", "same")
     apparus = diff[diff["etat"] == "APPARU"] if not diff.empty else diff
     assert apparus.empty
+
+
+def test_diff_boitiers_toutes_paires():
+    """3 boîtiers -> 3 paires comparées, ordre alphabétique stable ; 'inconnu' exclu."""
+    import pandas as pd
+    from fortilog.main import _diff_boitiers
+    full = pd.DataFrame({
+        "boitier": ["B", "A", "C", "inconnu"],
+        "logdesc": ["Admin login successful"] * 4,
+        "user": ["ub", "ua", "uc", "ux"],
+        "srcip": ["10.0.0.2", "10.0.0.1", "10.0.0.3", "10.0.0.4"],
+        "cfgpath": [""] * 4, "cfgobj": [""] * 4,
+        "type": [""] * 4, "subtype": [""] * 4, "dstip": [""] * 4,
+    })
+    ds = _diff_boitiers(full)
+    pairs = [(d["de"].iloc[0], d["vers"].iloc[0]) for d in ds]
+    assert pairs == [("A", "B"), ("A", "C"), ("B", "C")]

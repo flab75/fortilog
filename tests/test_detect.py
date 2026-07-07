@@ -26,6 +26,15 @@ def test_r1_login_interne_inconnu_eleve(cfg):
     assert any("hors référentiel" in r for r in eleve["regle"])
 
 
+def test_r1_login_sans_srcip_moyen(cfg):
+    """Login admin réussi SANS srcip -> sévérité moyen, libellé dédié, jamais critique."""
+    ev = detect_on_fixture("login_admin_no_srcip.log", cfg)
+    assert ev[ev["severite"] == "critique"].empty
+    ind = ev[ev["regle"].str.contains("indéterminée", na=False)]
+    assert len(ind) >= 1
+    assert (ind["severite"] == "moyen").all()
+
+
 # --- R2 : Brute-force sur compte valide ---
 
 def test_r2_passwd_invalid_eleve(cfg):
@@ -183,6 +192,20 @@ def test_r9_vpn_to_mgmt_eleve(cfg):
     eleve = ev[ev["severite"] == "eleve"]
     assert len(eleve) >= 1
     assert any("VPN" in r and "management" in r for r in eleve["regle"])
+
+
+def test_r9_pool_vpn_defaut_retrocompatible(cfg):
+    """Sans clé pool_vpn dans la config, R9 garde le défaut 10.212.134.0/24."""
+    cfg.pop("pool_vpn", None)
+    ev = detect_on_fixture("vpn_to_mgmt.log", cfg)
+    assert any("management" in r for r in ev["regle"])
+
+
+def test_r9_pool_vpn_configurable(cfg):
+    """Un pool_vpn qui n'inclut pas la source de la fixture -> plus d'alerte R9."""
+    cfg["pool_vpn"] = ["10.99.0.0/24"]
+    ev = detect_on_fixture("vpn_to_mgmt.log", cfg)
+    assert ev[ev["regle"].str.contains("management", na=False)].empty
 
 
 # --- R10 : UTM/app-ctrl ---

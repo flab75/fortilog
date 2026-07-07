@@ -52,6 +52,19 @@ def validate_config(cfg: dict) -> list[str]:
             except ValueError:
                 errors.append(f"plages_internes[{i}] : '{cidr}' n'est pas un CIDR valide")
 
+    # Pool VPN (optionnel, R9 ; défaut 10.212.134.0/24) : un CIDR ou une liste de CIDR
+    pool = cfg.get("pool_vpn")
+    if pool is not None:
+        entries = [pool] if isinstance(pool, str) else pool
+        if not isinstance(entries, list):
+            errors.append(f"pool_vpn : attendu un CIDR ou une liste de CIDR, reçu {type(pool).__name__}")
+        else:
+            for i, cidr in enumerate(entries):
+                try:
+                    ipaddress.ip_network(str(cidr).split("#")[0].strip())
+                except ValueError:
+                    errors.append(f"pool_vpn[{i}] : '{cidr}' n'est pas un CIDR valide")
+
     # Destinations légitimes : IP valides
     dests = cfg.get("destinations_legitimes", {})
     if isinstance(dests, dict):

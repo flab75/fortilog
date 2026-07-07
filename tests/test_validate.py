@@ -111,3 +111,18 @@ def test_top_sources_externes_invalid(cfg):
     bad["top_sources_externes"] = -3
     errors = validate_config(bad)
     assert any("top_sources_externes" in e for e in errors)
+
+
+def test_pool_vpn_chaine_ou_liste_valide(cfg):
+    ok = copy.deepcopy(cfg)
+    ok["pool_vpn"] = "10.99.0.0/16"
+    assert validate_config(ok) == []
+    ok["pool_vpn"] = ["10.99.0.0/16", "10.100.0.0/24"]
+    assert validate_config(ok) == []
+
+
+def test_pool_vpn_cidr_invalide(cfg):
+    bad = copy.deepcopy(cfg)
+    bad["pool_vpn"] = ["10.0.0.0/24", "not-a-cidr"]
+    errors = validate_config(bad)
+    assert any("pool_vpn" in e for e in errors)
