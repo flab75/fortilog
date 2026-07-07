@@ -9,29 +9,22 @@ import numpy as np
 import pandas as pd
 
 from .common import SEV_ORDER, CFG_ACCOUNT_PATHS, MITRE_MAP, str_col
+from .geo import RangeTable
 
 
-def _load_cidr_networks(path) -> list:
-    """Charge une liste de CIDRs (un par ligne, '#' = commentaire) en réseaux ipaddress.
-    Fichier absent/illisible -> liste vide (dégradation honnête, jamais d'erreur fatale)."""
-    nets = []
+def _load_range_table(path) -> RangeTable | None:
+    """Charge une liste de CIDRs (un par ligne, '#' = commentaire) en RangeTable
+    (dichotomie, cf. geo.py). Fichier absent/illisible -> None (dégradation honnête,
+    jamais d'erreur fatale)."""
     if not path:
-        return nets
+        return None
     p = Path(path)
     if not p.is_file():
-        return nets
+        return None
     try:
-        for line in p.read_text(encoding="utf-8").splitlines():
-            line = line.split("#", 1)[0].strip()
-            if not line:
-                continue
-            try:
-                nets.append(ipaddress.ip_network(line, strict=False))
-            except ValueError:
-                pass
+        return RangeTable.from_cidr_file(p)
     except OSError:
-        pass
-    return nets
+        return None
 
 
 def _internal_map(ips, nets) -> dict:
@@ -132,10 +125,9 @@ def run_detection(df: pd.DataFrame, cfg: dict, enricher=None, comptes_vus_prev=N
     #   (B) org ASN « FORTINET » au runtime (base iptoasn déjà chargée dans `enricher`).
     uniq_dst = set(dstip.unique())
     fortinet_dst = set()
-    _fnets = _load_cidr_networks(cfg.get("fortinet_ranges_file"))
-    if _fnets:
-        fmap = _internal_map(uniq_dst, _fnets)
-        fortinet_dst |= {ip for ip, hit in fmap.items() if hit}
+    _ftable = _load_range_table(cfg.get("fortinet_ranges_file"))
+    if _ftable:
+        fortinet_dst |= {ip for ip in uniq_dst if _ftable.lookup(ip) is not None}
     if enricher is not None and getattr(enricher, "asn", None) is not None:
         for ip in uniq_dst:
             if ip in fortinet_dst:
