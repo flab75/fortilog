@@ -15,8 +15,10 @@ Discriminant par famille :
 
 Fichier d'état `etat_suivi.json` (défaut : dossier --output, surchargeable --etat) :
 {version: 1, analyses: [{date, n_constats}], constats: {id: {premiere_vue,
-derniere_vue, statut, regle, resume[, motif, date_acquittement]}}}.
+derniere_vue, statut, regle, resume[, motif, date_acquittement]}},
+comptes_vus: {compte: {pays: {premiere_vue}}}}.
 `statut` ∈ nouveau | connu | acquitte. JSON trié/indenté, éditable à la main.
+`comptes_vus` alimente detect.py (R14/R15, nouveauté comportementale par compte admin).
 
 Garde-fous : un constat acquitté RESTE signalé (tag [ACQUITTÉ le JJ/MM/AAAA]), il est
 seulement exclu du décompte d'alerte ; un état corrompu -> warning explicite, run
@@ -75,6 +77,15 @@ def charger_etat(path: Path):
         return etat, None
     except (json.JSONDecodeError, OSError) as e:
         return None, f"fichier d'état {path} illisible ({e})"
+
+
+def charger_comptes_vus(path) -> dict:
+    """Snapshot en lecture seule {compte: [pays déjà vus]} pour detect.py (R14/R15) —
+    historique compte×pays des analyses précédentes. Absent/corrompu -> {} (dégradation
+    honnête, jamais bloquant ; le warning de corruption est déjà émis par appliquer_suivi)."""
+    etat, _warn = charger_etat(Path(path))
+    comptes = (etat or {}).get("comptes_vus", {})
+    return {compte: list(pays.keys()) for compte, pays in comptes.items()}
 
 
 def _resume_events(df, i):
@@ -155,8 +166,17 @@ def appliquer_suivi(tables: dict, meta: dict, etat_path) -> None:
                      "date_precedente": date_prec, "n_constats": len(courants),
                      "n_nouveaux": len(nouveaux), "n_acquittes": n_acq}
 
+    # Historique compte×pays (P5.2, R14/R15) : les couples déjà connus gardent leur
+    # premiere_vue d'origine, seuls les couples nouveaux ce run sont ajoutés.
+    comptes_vus = {c: dict(p) for c, p in (etat or {}).get("comptes_vus", {}).items()}
+    for compte, pays_list in meta.get("comportement_vus_courant", {}).items():
+        entree = comptes_vus.setdefault(compte, {})
+        for p in pays_list:
+            entree.setdefault(p, {"premiere_vue": today})
+
     path.write_text(json.dumps(
         {"version": ETAT_VERSION,
          "analyses": analyses + [{"date": today, "n_constats": len(courants)}],
-         "constats": constats},
+         "constats": constats,
+         "comptes_vus": comptes_vus},
         indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8")

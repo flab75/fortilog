@@ -135,7 +135,12 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None):
     enricher = geo.load_enricher(cfg)
     repdb = geo.load_reputation(cfg)
 
-    events = detect.run_detection(full, cfg, enricher)
+    # Historique compte×pays (P5.2) : lu AVANT la détection (R14/R15 en ont besoin),
+    # ré-écrit APRÈS dans le même etat_suivi.json (suivi.appliquer_suivi, dans _emit).
+    comptes_vus_prev = suivi.charger_comptes_vus(etat_path or (out / suivi.FICHIER_ETAT))
+
+    events = detect.run_detection(full, cfg, enricher, comptes_vus_prev)
+    comportement_vus_courant = events.attrs.get("comportement_vus_courant", {})
     chains = correlate.correlate_chains(events, cfg)
 
     # Enrichissement géo/ASN + réputation (hors-ligne, dégradation honnête si pas de base)
@@ -215,7 +220,8 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None):
             "geo_available": enricher.available,
             "reputation_available": repdb.available,
             "n_configs": len(conf_files), "n_config_changes": len(config_diff),
-            "config_ref": Path(ref_conf).name if ref_conf else None}
+            "config_ref": Path(ref_conf).name if ref_conf else None,
+            "comportement_vus_courant": comportement_vus_courant}
 
     # Acteurs à risque : sur les événements ENRICHIS (géo/réputation), avant slim.
     tables["acteurs"] = actors.build_actors(events, full, meta, cfg)

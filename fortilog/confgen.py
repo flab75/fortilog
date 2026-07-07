@@ -231,6 +231,10 @@ horaires_ouvres:
   fin: 20
   alerte_weekend: true
 
+# R14/R15 — nouveauté comportementale par compte admin + impossible travel.
+comportement:
+  fenetre_minutes: 60
+
 # Corrélation temporelle (chaîne IoC) accès -> compte -> exfiltration. SUSPICION, pas preuve.
 correlation:
   fenetre_minutes: 60

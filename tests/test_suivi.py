@@ -7,9 +7,19 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+import yaml
 
 from fortilog import ack, suivi
 from tests.conftest import CONFIG_PATH, FIXTURES
+
+# R14 (pays) se rebranche sur l'historique compte×pays persistant (P5.2) : un même
+# compte×pays vu au run 1 n'est plus « nouveau » au run 2 -> le nombre d'événements
+# n'est PAS stable d'un run à l'autre pour cette règle précise (comportement voulu).
+_REGLES_PAYS_NOUVEAUTE = {
+    "Connexion admin depuis un pays non vu plus tôt dans cette analyse (SUSPICION comportementale)",
+    "Connexion admin depuis un pays jamais vu pour ce compte, historique inclus "
+    "(SUSPICION comportementale)",
+}
 
 
 def _run_twice_dirs():
@@ -70,7 +80,10 @@ def test_ack_tag_et_exclusion_du_decompte(capsys):
         # exclu du décompte, jamais supprimé
         assert meta2["suivi"]["n_acquittes"] >= 1
         assert "acquitté(s) hors décompte" in meta2["analysis"]
-        assert len(ev) == len(tables1["events"])
+        # hors règle de nouveauté "pays" (R14) : elle se rebranche sur l'historique
+        # persistant entre run1 et run2, donc son nombre d'occurrences n'est PAS stable.
+        stable = lambda df: df[~df["regle"].isin(_REGLES_PAYS_NOUVEAUTE)]
+        assert len(stable(ev)) == len(stable(tables1["events"]))
     finally:
         shutil.rmtree(input_dir, ignore_errors=True)
         shutil.rmtree(output_dir, ignore_errors=True)
@@ -125,3 +138,40 @@ def test_ack_liste_et_id_inconnu(tmp_path, capsys):
     assert "abcd1234abcd1234" in out and "R-test" in out
     with pytest.raises(SystemExit):
         ack.main(["id_inexistant", "--etat", str(etat_path)])
+
+
+def test_comptes_vus_persiste_entre_runs():
+    """R14 (pays) branché sur l'état persistant : un couple compte×pays déjà vu au
+    run 1 n'est plus signalé « nouveau » au run 2, mais un pays réellement inédit
+    pour ce compte l'est toujours (libellé « historique inclus »).
+    Mini-base géo de test (203.0.113.0/24=NL, 1.0.0.0/24=AU) : la vraie base
+    (data/geo/, gitignorée) n'est pas disponible en CI."""
+    from fortilog.main import run
+    input_dir, output_dir = _run_twice_dirs()
+    try:
+        cfg = yaml.safe_load(CONFIG_PATH.read_text())
+        cfg["geo_db_path"] = str(FIXTURES / "geo_country_mini.csv")
+        cfg["asn_db_path"] = None
+        config_path = output_dir / "config_test.yaml"
+        config_path.write_text(yaml.safe_dump(cfg))
+
+        shutil.copy(FIXTURES / "comportement_pays_run1.log", input_dir / "scenario.log")
+        tables1, _ = run(str(input_dir), str(config_path), str(output_dir))
+        pays1 = tables1["events"][tables1["events"]["regle"].str.contains("un pays", na=False)]
+        assert len(pays1) == 1
+        assert "user=adminZ" in pays1["detail"].iloc[0]
+
+        etat = json.loads((output_dir / "etat_suivi.json").read_text(encoding="utf-8"))
+        assert "NL" in etat["comptes_vus"]["adminZ"]
+
+        (input_dir / "scenario.log").unlink()
+        shutil.copy(FIXTURES / "comportement_pays_run2.log", input_dir / "scenario.log")
+        tables2, _ = run(str(input_dir), str(config_path), str(output_dir))
+        pays2 = tables2["events"][tables2["events"]["regle"].str.contains("un pays", na=False)]
+        # le retour en NL (déjà vu) n'est plus signalé ; seul AU (inédit pour adminZ) l'est
+        assert len(pays2) == 1
+        assert "pays=AU" in pays2["detail"].iloc[0]
+        assert "historique inclus" in pays2["regle"].iloc[0]
+    finally:
+        shutil.rmtree(input_dir, ignore_errors=True)
+        shutil.rmtree(output_dir, ignore_errors=True)

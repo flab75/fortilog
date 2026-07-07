@@ -48,6 +48,15 @@ MITRE_MAP = {
     "Trafic via outil de proxy/anonymisation (UTM/app-ctrl)": "T1090 — Proxy",
     # R12 — anomalie d'usage d'un compte valide
     "Login admin hors horaires ouvrés (SUSPICION comportementale)": "T1078 — Valid Accounts",
+    # R14 / R15 — nouveauté comportementale par compte admin / impossible travel
+    "Connexion admin depuis une IP non vue plus tôt dans cette analyse "
+    "(SUSPICION comportementale)": "T1078 — Valid Accounts",
+    "Connexion admin depuis un pays non vu plus tôt dans cette analyse "
+    "(SUSPICION comportementale)": "T1078 — Valid Accounts",
+    "Connexion admin depuis un pays jamais vu pour ce compte, historique inclus "
+    "(SUSPICION comportementale)": "T1078 — Valid Accounts",
+    "Connexions admin depuis pays incompatibles en fenêtre courte — impossible travel "
+    "(SUSPICION)": "T1078 — Valid Accounts",
 }
 
 
