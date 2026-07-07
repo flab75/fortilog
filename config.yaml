@@ -86,6 +86,11 @@ geo_db_path: data/geo/dbip-country-lite.csv  # DB-IP Lite : start_ip,end_ip,coun
 asn_db_path: data/geo/ip2asn-v4.tsv          # iptoasn : start<TAB>end<TAB>asn<TAB>country<TAB>org
 top_sources_externes: 50   # nombre d'IP externes classées dans la feuille dédiée
 
+# Agrégats descriptifs (sans règle d'alerte) pour utm/ips, utm/webfilter, utm/dns,
+# utm/antivirus : top N valeurs par volume (signatures, domaines/catégories, verdicts).
+utm_descriptif:
+  top_n: 20
+
 # Fraîcheur des bases hors-ligne (géo/ASN/réputation/plages Fortinet) : au-delà de
 # age_max_jours (mtime), avertissement en tête du rapport (JAMAIS bloquant).
 bases:

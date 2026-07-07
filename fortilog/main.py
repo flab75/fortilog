@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases
+from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats
 from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
 from .validate import validate_config
 
@@ -95,6 +95,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None):
         ref_rows = [{"clé": k, "valeur": str(v)} for k, v in cfg.items()]
         tables = {"unifie": empty, "events": empty, "chains": empty, "agg": empty,
                   "bursts": empty, "diff": empty, "security_rating": empty, "acteurs": empty,
+                  "utm_descriptifs": empty,
                   "sources_externes": empty, "reputation": empty,
                   "config_audit": config_audit, "config_diff": config_diff,
                   "ref": pd.DataFrame(ref_rows)}
@@ -218,6 +219,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None):
 
     # Acteurs à risque : sur les événements ENRICHIS (géo/réputation), avant slim.
     tables["acteurs"] = actors.build_actors(events, full, meta, cfg)
+    tables["utm_descriptifs"] = utm_stats.build_utm_descriptifs(full, files, cfg)
 
     return _emit(out, tables, meta, cfg, etat_path)
 

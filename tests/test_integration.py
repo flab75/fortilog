@@ -374,3 +374,30 @@ def test_run_base_perimee_avertit_end_to_end():
     finally:
         shutil.rmtree(input_dir, ignore_errors=True)
         shutil.rmtree(output_dir, ignore_errors=True)
+
+
+def test_run_utm_descriptif_end_to_end():
+    """run() complet sur des logs utm/ips+webfilter+dns+antivirus : table remplie,
+    feuille Excel « UTM descriptif », section descriptive dans le rapport texte."""
+    from fortilog.main import run
+    from openpyxl import load_workbook
+
+    input_dir = Path(tempfile.mkdtemp())
+    output_dir = Path(tempfile.mkdtemp())
+    try:
+        shutil.copy(FIXTURES / "utm_descriptif_scenario.log", input_dir / "scenario.log")
+        tables, meta = run(str(input_dir), str(CONFIG_PATH), str(output_dir))
+
+        ud = tables["utm_descriptifs"]
+        assert set(ud["type_utm"]) == {"ips", "webfilter", "dns", "antivirus"}
+        assert (ud["note"] == "(descriptif, sans règle d'alerte)").all()
+
+        rapport = (output_dir / "rapport_fortigate.txt").read_text(encoding="utf-8")
+        assert "AGRÉGATS DESCRIPTIFS UTM (sans règle d'alerte)" in rapport
+        assert "HTTP.URI.SQLI" in rapport
+
+        wb = load_workbook(output_dir / "rapport_fortigate.xlsx")
+        assert "UTM descriptif" in wb.sheetnames
+    finally:
+        shutil.rmtree(input_dir, ignore_errors=True)
+        shutil.rmtree(output_dir, ignore_errors=True)

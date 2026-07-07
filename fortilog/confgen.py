@@ -252,6 +252,11 @@ top_sources_externes: 50
 bases:
   age_max_jours: 90
 
+# Agrégats descriptifs (sans règle d'alerte) pour utm/ips, utm/webfilter, utm/dns,
+# utm/antivirus : top N valeurs par volume.
+utm_descriptif:
+  top_n: 20
+
 # Listes de réputation IP HORS-LIGNE (threat intel, optionnel).
 reputation_lists:
   - { nom: "FireHOL L1", path: data/geo/firehol_level1.netset }
