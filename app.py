@@ -16,9 +16,10 @@ sys.path.insert(0, str(ROOT))
 
 from fortilog.main import run
 from fortilog import confdiff, confgen
+from fortilog.common import SEV_ORDER
 from fortilog.ui_helpers import (
     prepare_events, prepare_metrics, prepare_agg,
-    prepare_bursts, prepare_diff, prepare_chains, SEV_COLORS,
+    prepare_bursts, prepare_diff, prepare_chains, filter_events, SEV_COLORS,
 )
 
 DEFAULT_CONFIG = ROOT / "config.yaml"
@@ -213,12 +214,42 @@ if _res:
         st.markdown(meta.get("analysis", "_Rapport indisponible._"))
 
     with tab_ev:
-        ev_df = prepare_events(tables["events"])
-        if ev_df.empty:
+        raw_ev = tables["events"]
+        if raw_ev is None or raw_ev.empty:
             st.info("Aucun événement signalé.")
         else:
-            st.caption(f"{len(ev_df)} événement(s) — triés par sévérité décroissante")
-            show_styled(ev_df, "severite", height=500)
+            sev_opts = sorted(raw_ev["severite"].dropna().unique(),
+                               key=lambda s: SEV_ORDER.get(s, 0), reverse=True)
+            boitier_opts = sorted(raw_ev["boitier"].dropna().unique()) if "boitier" in raw_ev.columns else []
+            regle_opts = sorted(raw_ev["regle"].dropna().unique())
+
+            f1, f2, f3 = st.columns(3)
+            sel_sev = f1.multiselect("Sévérité", sev_opts, key="ev_filter_severite")
+            sel_boitier = f2.multiselect("Boîtier", boitier_opts, key="ev_filter_boitier")
+            sel_regle = f3.multiselect("Règle", regle_opts, key="ev_filter_regle")
+            d1, d2 = st.columns(2)
+            date_debut = d1.date_input("Depuis", value=None, key="ev_filter_date_debut")
+            date_fin = d2.date_input("Jusqu'à", value=None, key="ev_filter_date_fin")
+
+            filtered = filter_events(raw_ev, severites=sel_sev, boitiers=sel_boitier,
+                                      regles=sel_regle, date_debut=date_debut, date_fin=date_fin)
+            ev_df = prepare_events(filtered)
+            filtres_actifs = bool(sel_sev or sel_boitier or sel_regle or date_debut or date_fin)
+            if ev_df.empty:
+                st.info("Aucun événement ne correspond aux filtres." if filtres_actifs
+                        else "Aucun événement signalé.")
+            else:
+                st.caption(f"{len(ev_df)} événement(s)"
+                           + (" (filtrés)" if filtres_actifs else "")
+                           + " — triés par sévérité décroissante")
+                show_styled(ev_df, "severite", height=500)
+                st.download_button(
+                    label="⬇️ Télécharger la sélection filtrée (CSV)",
+                    data=ev_df.to_csv(index=False).encode("utf-8"),
+                    file_name="evenements_filtres.csv",
+                    mime="text/csv",
+                    key="ev_download_csv",
+                )
 
     with tab_actors:
         act_df = tables.get("acteurs")

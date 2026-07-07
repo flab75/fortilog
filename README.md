@@ -71,7 +71,9 @@ streamlit run app.py
 Ouvre un navigateur : déposez vos fichiers `.log`, choisissez un `config.yaml`
 optionnel, cliquez **Lancer l'analyse**. Les résultats s'affichent en onglets
 (événements signalés colorés, tableau de bord, rafales, différentiels) et le
-rapport `.xlsx` est téléchargeable directement.
+rapport `.xlsx` est téléchargeable directement. L'onglet « Événements signalés »
+propose des filtres (sévérité, boîtier, règle, plage de dates) et un bouton pour
+télécharger la sélection filtrée en CSV.
 
 ### Ligne de commande (CLI)
 ```bash

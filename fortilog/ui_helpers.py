@@ -25,6 +25,30 @@ def severity_badge(sev: str) -> str:
     return f'<span style="color:{color};font-weight:bold">{sev.upper()}</span>'
 
 
+def filter_events(events: pd.DataFrame, severites=None, boitiers=None, regles=None,
+                  date_debut=None, date_fin=None) -> pd.DataFrame:
+    """Filtre les événements par sévérité/boîtier/règle/plage de dates (bornes incluses).
+    Chaque filtre est optionnel (None ou vide -> pas de restriction). `date_debut`/
+    `date_fin` sont des `datetime.date`. Opère sur les événements bruts (colonne
+    `timestamp` non tronquée) — appeler AVANT `prepare_events`."""
+    if events is None or events.empty:
+        return pd.DataFrame()
+    mask = pd.Series(True, index=events.index)
+    if severites:
+        mask &= events["severite"].isin(severites)
+    if boitiers and "boitier" in events.columns:
+        mask &= events["boitier"].isin(boitiers)
+    if regles:
+        mask &= events["regle"].isin(regles)
+    if (date_debut is not None or date_fin is not None) and "timestamp" in events.columns:
+        ts = pd.to_datetime(events["timestamp"], errors="coerce")
+        if date_debut is not None:
+            mask &= ts >= pd.Timestamp(date_debut)
+        if date_fin is not None:
+            mask &= ts < pd.Timestamp(date_fin) + pd.Timedelta(days=1)
+    return events[mask]
+
+
 def prepare_events(events: pd.DataFrame) -> pd.DataFrame:
     """Sélectionne et trie les colonnes pour affichage (sévérité décroissante)."""
     if events is None or events.empty:
