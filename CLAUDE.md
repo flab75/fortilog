@@ -450,7 +450,8 @@ du README : le mapping est indicatif (aide au reporting), pas une attribution.
    identique à l'actuel. Test : 3 boîtiers synthétiques → 3 paires comparées, ordre stable.
 
 ### P5 — Fil de l'eau (chacun autonome, prendre dans l'ordre au choix)
-1. **Agrégats descriptifs UTM sans règles** : pour `utm/ips`, `utm/webfilter`, `utm/dns`,
+1. **Agrégats descriptifs UTM sans règles** — ✅ FAIT (PR #14 mergée le 2026-07-07,
+   module utm_stats.py) : pour `utm/ips`, `utm/webfilter`, `utm/dns`,
    `utm/antivirus` présents dans les logs, ajouter au tableau de bord (feuille « Tableau
    de bord » + section rapport) des top-N PUREMENT DESCRIPTIFS : top signatures/attaques
    (ips : champs `attack`/`severity`), top domaines/catégories bloqués (webfilter :
