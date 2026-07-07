@@ -459,14 +459,15 @@ du README : le mapping est indicatif (aide au reporting), pas une attribution.
    détection — description marquée « (descriptif, sans règle d'alerte) ». Ne s'appuyer
    QUE sur des champs réellement présents dans les fichiers fournis ; champ absent →
    omettre la ligne (ne rien inventer). Tests avec fixtures minimales par type.
-2. **Nouveauté comportementale par compte admin** : première IP source / premier pays
-   jamais vu pour un compte admin sur la période analysée → info (SUSPICION
-   comportementale). NB : sans l'état persistant P2, « jamais vu » = « pas vu plus tôt
-   dans la MÊME analyse » (le dire dans le libellé) ; brancher sur l'état P2 quand il
-   existe (`premiere_vue` par couple compte×pays). *Impossible travel* (2 pays
-   incompatibles < `comportement.fenetre_minutes`, défaut 60) → eleve (SUSPICION) —
-   nécessite la géo ; sans base, la détection est silencieusement absente (mention dans
-   la synthèse comme pour la géo).
+2. **Nouveauté comportementale par compte admin** — ✅ FAIT (PR #15 mergée le 2026-07-07,
+   règles R14/R15 dans `detect.py`) : première IP source / premier pays jamais vu pour un
+   compte admin sur la période analysée → info (SUSPICION comportementale). Sans l'état
+   persistant P2, « jamais vu » = « pas vu plus tôt dans la MÊME analyse » (dit dans le
+   libellé) ; branché sur l'état P2 (`etat_suivi.json`, clé `comptes_vus`, `premiere_vue`
+   par couple compte×pays) quand il existe. *Impossible travel* (2 pays incompatibles <
+   `comportement.fenetre_minutes`, défaut 60) → eleve (SUSPICION) — nécessite la géo ;
+   sans base, la détection est silencieusement absente (mention dans la synthèse comme
+   pour la géo).
 3. **`RangeTable` dans detect.py** : remplacer `_load_cidr_networks` + `_internal_map`
    sur `fortinet_ranges_file` (O(IP×réseaux)) par `geo.RangeTable.from_cidr_file`
    (dichotomie, déjà testé). Comportement identique attendu — vérifier par test A/B sur

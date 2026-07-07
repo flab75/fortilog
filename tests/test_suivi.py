@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+import yaml
 
 from fortilog import ack, suivi
 from tests.conftest import CONFIG_PATH, FIXTURES
@@ -142,24 +143,32 @@ def test_ack_liste_et_id_inconnu(tmp_path, capsys):
 def test_comptes_vus_persiste_entre_runs():
     """R14 (pays) branché sur l'état persistant : un couple compte×pays déjà vu au
     run 1 n'est plus signalé « nouveau » au run 2, mais un pays réellement inédit
-    pour ce compte l'est toujours (libellé « historique inclus »)."""
+    pour ce compte l'est toujours (libellé « historique inclus »).
+    Mini-base géo de test (203.0.113.0/24=NL, 1.0.0.0/24=AU) : la vraie base
+    (data/geo/, gitignorée) n'est pas disponible en CI."""
     from fortilog.main import run
     input_dir, output_dir = _run_twice_dirs()
     try:
+        cfg = yaml.safe_load(CONFIG_PATH.read_text())
+        cfg["geo_db_path"] = str(FIXTURES / "geo_country_mini.csv")
+        cfg["asn_db_path"] = None
+        config_path = output_dir / "config_test.yaml"
+        config_path.write_text(yaml.safe_dump(cfg))
+
         shutil.copy(FIXTURES / "comportement_pays_run1.log", input_dir / "scenario.log")
-        tables1, _ = run(str(input_dir), str(CONFIG_PATH), str(output_dir))
+        tables1, _ = run(str(input_dir), str(config_path), str(output_dir))
         pays1 = tables1["events"][tables1["events"]["regle"].str.contains("un pays", na=False)]
         assert len(pays1) == 1
         assert "user=adminZ" in pays1["detail"].iloc[0]
 
         etat = json.loads((output_dir / "etat_suivi.json").read_text(encoding="utf-8"))
-        assert "US" in etat["comptes_vus"]["adminZ"]
+        assert "NL" in etat["comptes_vus"]["adminZ"]
 
         (input_dir / "scenario.log").unlink()
         shutil.copy(FIXTURES / "comportement_pays_run2.log", input_dir / "scenario.log")
-        tables2, _ = run(str(input_dir), str(CONFIG_PATH), str(output_dir))
+        tables2, _ = run(str(input_dir), str(config_path), str(output_dir))
         pays2 = tables2["events"][tables2["events"]["regle"].str.contains("un pays", na=False)]
-        # le retour en US (déjà vu) n'est plus signalé ; seul AU (inédit pour adminZ) l'est
+        # le retour en NL (déjà vu) n'est plus signalé ; seul AU (inédit pour adminZ) l'est
         assert len(pays2) == 1
         assert "pays=AU" in pays2["detail"].iloc[0]
         assert "historique inclus" in pays2["regle"].iloc[0]
