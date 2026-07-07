@@ -216,6 +216,49 @@ def validate_config(cfg: dict) -> list[str]:
                 if not isinstance(seq, list) or len(seq) < 2:
                     errors.append("correlation.sequence_requise : attendu une liste d'au moins 2 étapes")
 
+    # Acteurs à risque (section optionnelle) : max_lignes entier > 0, poids numériques >= 0
+    ac = cfg.get("acteurs")
+    if ac is not None:
+        if not isinstance(ac, dict):
+            errors.append(f"acteurs : attendu un dictionnaire, reçu {type(ac).__name__}")
+        else:
+            ml = ac.get("max_lignes")
+            if ml is not None:
+                try:
+                    if int(ml) <= 0:
+                        errors.append(f"acteurs.max_lignes : doit être > 0, reçu {ml}")
+                except (ValueError, TypeError):
+                    errors.append(f"acteurs.max_lignes : '{ml}' n'est pas un entier valide")
+            po = ac.get("poids")
+            if po is not None:
+                if not isinstance(po, dict):
+                    errors.append(f"acteurs.poids : attendu un dictionnaire, reçu {type(po).__name__}")
+                else:
+                    for k, v in po.items():
+                        try:
+                            if float(v) < 0:
+                                errors.append(f"acteurs.poids.{k} : doit être >= 0, reçu {v}")
+                        except (ValueError, TypeError):
+                            errors.append(f"acteurs.poids.{k} : '{v}' n'est pas un nombre valide")
+
+    # Frise chronologique (section optionnelle) : sévérité connue, groupe entier > 0
+    tl = cfg.get("timeline")
+    if tl is not None:
+        if not isinstance(tl, dict):
+            errors.append(f"timeline : attendu un dictionnaire, reçu {type(tl).__name__}")
+        else:
+            sm = tl.get("severite_min")
+            if sm is not None and sm not in ("info", "faible", "moyen", "eleve", "critique"):
+                errors.append(f"timeline.severite_min : '{sm}' invalide "
+                              f"(attendu info/faible/moyen/eleve/critique)")
+            mg = tl.get("max_par_groupe")
+            if mg is not None:
+                try:
+                    if int(mg) <= 0:
+                        errors.append(f"timeline.max_par_groupe : doit être > 0, reçu {mg}")
+                except (ValueError, TypeError):
+                    errors.append(f"timeline.max_par_groupe : '{mg}' n'est pas un entier valide")
+
     # Rapport de synthèse (section optionnelle) : max_constats entier > 0
     rap = cfg.get("rapport")
     if rap is not None:

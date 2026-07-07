@@ -197,9 +197,10 @@ if _res:
     n_chains = len(chains_df)
     config_diff_df = tables.get("config_diff")
     n_cdiff = 0 if config_diff_df is None else len(config_diff_df)
-    tab_report, tab_ev, tab_chains, tab_conf, tab_cdiff, tab_agg, tab_burst, tab_diff = st.tabs([
+    tab_report, tab_ev, tab_actors, tab_chains, tab_conf, tab_cdiff, tab_agg, tab_burst, tab_diff = st.tabs([
         "📝 Rapport",
         "🚨 Événements signalés",
+        "🎯 Acteurs à risque",
         f"🔗 Chaînes suspectes ({n_chains})",
         f"🛠 Audit config ({n_config})",
         f"🔁 Comparaison config ({n_cdiff})",
@@ -218,6 +219,14 @@ if _res:
         else:
             st.caption(f"{len(ev_df)} événement(s) — triés par sévérité décroissante")
             show_styled(ev_df, "severite", height=500)
+
+    with tab_actors:
+        act_df = tables.get("acteurs")
+        if act_df is None or act_df.empty:
+            st.info("Aucun acteur à risque (aucun événement signalé).")
+        else:
+            st.caption(f"{len(act_df)} acteur(s) — le score sert à **trier**, jamais à conclure.")
+            show_styled(act_df, "severite_max", height=500)
 
     with tab_chains:
         if chains_df.empty:

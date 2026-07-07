@@ -92,15 +92,26 @@ fortilog --input ./logs --config config.yaml --output ./rapport
    l'onglet « Rapport » de l'UI Streamlit.
 1. `Tableau de bord` — agrégats par boîtier/jour (échecs, logins OK, lockouts, SSL-VPN, passwd_invalid, IP uniques).
 2. `Evenements signales` — événements à risque, colorés par sévérité (info→critique), enrichis portée/pays/ASN/réputation.
-3. `Chaines suspectes` — séquences corrélées (accès→compte→exfiltration) — **à confirmer**.
-4. `IP malveillantes` — sources présentes dans une liste de réputation (threat intel) — **à confirmer**.
-5. `Audit config` — constats sur les `.conf` FortiGate importés (comptes, accès, automation) — **à confirmer**.
-6. `Comparaison config` — écarts (ajout/suppr/modif) vs une config de référence + attribution qui/quand — **à confirmer**.
-7. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
-8. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
-9. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
-10. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
-11. `Referentiel` — la configuration du « normal » utilisée.
+3. `Acteurs a risque` — IP externes et comptes agrégés depuis les événements, triés par un
+   **score de priorisation transparent** : `score = 100×n_critique + 30×n_eleve + 10×n_moyen
+   + 3×n_faible + 50×(réputation non vide) + 20×(nb règles distinctes − 1)` (pondérations :
+   `acteurs.poids`, plafond `acteurs.max_lignes` défaut 100). Le score sert à **trier** les
+   entités à investiguer, **jamais à conclure**. IP d'infrastructure connue (WAN/mgmt,
+   peers/DNS) exclues.
+4. `Chaines suspectes` — séquences corrélées (accès→compte→exfiltration) — **à confirmer**.
+5. `IP malveillantes` — sources présentes dans une liste de réputation (threat intel) — **à confirmer**.
+6. `Audit config` — constats sur les `.conf` FortiGate importés (comptes, accès, automation) — **à confirmer**.
+7. `Comparaison config` — écarts (ajout/suppr/modif) vs une config de référence + attribution qui/quand — **à confirmer**.
+8. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
+9. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
+10. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
+11. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
+12. `Referentiel` — la configuration du « normal » utilisée.
+
+Le rapport de synthèse comporte aussi une **frise chronologique** des événements de
+sévérité ≥ `timeline.severite_min` (défaut `eleve`) : rafales consécutives de même
+(règle, acteur) dans la même heure regroupées en « × N similaires de HH:MM à HH:MM »
+au-delà de `timeline.max_par_groupe` (défaut 3) — le compte exact est toujours conservé.
 
 ## Détection (grille d'audit, 13 règles)
 - Login admin réussi depuis source **externe** (critique) / compte hors référentiel (élevé).

@@ -259,6 +259,16 @@ app_ctrl_whitelist:
 # Rapport de synthèse : nombre de constats/événements/IP détaillés par section.
 rapport:
   max_constats: 5
+
+# Acteurs à risque : score de PRIORISATION (sert à trier, jamais à conclure).
+acteurs:
+  max_lignes: 100
+  poids: {critique: 100, eleve: 30, moyen: 10, faible: 3, reputation: 50, regle_supplementaire: 20}
+
+# Frise chronologique du rapport (événements >= severite_min, rafales regroupées).
+timeline:
+  severite_min: eleve
+  max_par_groupe: 3
 """
 
 

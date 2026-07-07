@@ -133,3 +133,14 @@ def test_bruteforce_name_invalid_seuil_invalide(cfg):
     bad["bruteforce_name_invalid"] = {"fenetre_minutes": 60, "seuil_echecs": 0}
     errors = validate_config(bad)
     assert any("bruteforce_name_invalid" in e for e in errors)
+
+
+def test_acteurs_et_timeline_invalides(cfg):
+    bad = copy.deepcopy(cfg)
+    bad["acteurs"] = {"max_lignes": 0, "poids": {"critique": "abc"}}
+    bad["timeline"] = {"severite_min": "enorme", "max_par_groupe": -1}
+    errors = validate_config(bad)
+    assert any("acteurs.max_lignes" in e for e in errors)
+    assert any("acteurs.poids.critique" in e for e in errors)
+    assert any("timeline.severite_min" in e for e in errors)
+    assert any("timeline.max_par_groupe" in e for e in errors)

@@ -3,9 +3,9 @@
 from __future__ import annotations
 import pandas as pd
 
-SHEETS_ORDER = ["Rapport", "Tableau de bord", "Evenements signales", "Chaines suspectes",
-                "IP malveillantes", "Audit config", "Comparaison config", "Sources externes",
-                "Rafales", "Differentiels", "Donnees unifiees", "Referentiel"]
+SHEETS_ORDER = ["Rapport", "Tableau de bord", "Evenements signales", "Acteurs a risque",
+                "Chaines suspectes", "IP malveillantes", "Audit config", "Comparaison config",
+                "Sources externes", "Rafales", "Differentiels", "Donnees unifiees", "Referentiel"]
 
 SEV_COLORS = {"critique": "#C00000", "eleve": "#E26B0A", "moyen": "#BF8F00",
               "faible": "#7F7F7F", "info": "#9CC3E5"}
@@ -70,6 +70,15 @@ def write_workbook(path, tables, cfg, analysis_text=""):
             col = list(ev.columns).index("severite")
             for sev, color in SEV_COLORS.items():
                 ws.conditional_format(1, col, len(ev), col, {
+                    "type": "text", "criteria": "containing", "value": sev,
+                    "format": wb.add_format({"bg_color": color, "font_color": "white"})})
+        # Acteurs à risque (score de priorisation : sert à trier, jamais à conclure)
+        act = tables.get("acteurs")
+        wsact = _write_df(writer, "Acteurs a risque", act, header_fmt)
+        if act is not None and not act.empty and "severite_max" in act.columns:
+            col = list(act.columns).index("severite_max")
+            for sev, color in SEV_COLORS.items():
+                wsact.conditional_format(1, col, len(act), col, {
                     "type": "text", "criteria": "containing", "value": sev,
                     "format": wb.add_format({"bg_color": color, "font_color": "white"})})
         # Chaînes suspectes (corrélation temporelle) — marquées « à confirmer »

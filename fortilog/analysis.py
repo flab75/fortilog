@@ -13,6 +13,7 @@ from __future__ import annotations
 import pandas as pd
 
 from .common import SEV_ORDER
+from .actors import POIDS_DEFAUT, SCORE_COL, build_timeline
 
 
 def _sev_counts(df):
@@ -198,6 +199,48 @@ def build_analysis(tables, meta, cfg) -> str:
         else:
             L.append("- Aucune chaîne IoC (accès → compte → exfiltration) corrélée.")
     L.append("")
+
+    # 3bis. Acteurs à investiguer en priorité (score de tri transparent, pas un verdict)
+    act = tables.get("acteurs")
+    if act is not None and not act.empty:
+        h("## 3bis. Acteurs à investiguer en priorité")
+        L.append("- Le score sert à **trier** les entités à examiner, jamais à conclure "
+                 "(pondérations : `acteurs.poids` du config.yaml).")
+        poids = {**POIDS_DEFAUT, **((cfg.get("acteurs") or {}).get("poids") or {})}
+        n_show = min(len(act), max_constats)
+        L.append(f"- Top {n_show} (sur {len(act)}) :")
+        for i, (_, r) in enumerate(act.head(n_show).iterrows(), 1):
+            parts = []
+            for k in ("critique", "eleve", "moyen", "faible"):
+                n = int(r.get(f"n_{k}", 0) or 0)
+                if n:
+                    parts.append(f"{n}×{poids[k]} {k}")
+            if str(r.get("reputation") or ""):
+                parts.append(f"{poids['reputation']} réputation ({r['reputation']})")
+            extra = int(r.get("nb_regles", 1) or 1) - 1
+            if extra > 0:
+                parts.append(f"{extra}×{poids['regle_supplementaire']} règle(s) suppl.")
+            geo = ""
+            if str(r.get("pays") or ""):
+                geo = f" — {r['pays']}" + (f" / AS{r['asn']} {r.get('org', '')}".rstrip()
+                                           if str(r.get("asn") or "") else "")
+            fails = int(r.get("echecs_login", 0) or 0)
+            fail_txt = f" — {fails:,} échec(s) de login" if fails else ""
+            L.append(f"  {i}. [{r['acteur_type']}] **{r['acteur']}** — "
+                     f"score {int(r[SCORE_COL])} ({' + '.join(parts)}){geo}{fail_txt}.")
+        L.append("")
+
+    # 3ter. Frise chronologique (P1b) — événements les plus sévères dans l'ordre
+    tl = build_timeline(events, cfg) if events is not None else pd.DataFrame()
+    if not tl.empty:
+        sev_min = (cfg.get("timeline") or {}).get("severite_min", "eleve")
+        h(f"## 3ter. FRISE CHRONOLOGIQUE (événements ≥ {sev_min}, rafales regroupées)")
+        for _, r in tl.iterrows():
+            detail = str(r.get("detail", "") or "").strip()
+            line = (f"- {r['timestamp']:%d/%m %H:%M} [{str(r['severite']).upper()}] "
+                    f"{r['regle']} — {r['acteur']}")
+            L.append(line + (f" — {detail}" if detail else "") + ".")
+        L.append("")
 
     # 4. Origine des accès externes
     h("## 4. Origine des accès externes (géo / threat intel)")

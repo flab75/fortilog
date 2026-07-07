@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis
+from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors
 from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
 from .validate import validate_config
 
@@ -84,7 +84,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None):
         empty = pd.DataFrame()
         ref_rows = [{"clé": k, "valeur": str(v)} for k, v in cfg.items()]
         tables = {"unifie": empty, "events": empty, "chains": empty, "agg": empty,
-                  "bursts": empty, "diff": empty, "security_rating": empty,
+                  "bursts": empty, "diff": empty, "security_rating": empty, "acteurs": empty,
                   "sources_externes": empty, "reputation": empty,
                   "config_audit": config_audit, "config_diff": config_diff,
                   "ref": pd.DataFrame(ref_rows)}
@@ -205,6 +205,9 @@ def run(input_dir, config_path, output_dir, ref_conf=None):
             "reputation_available": repdb.available,
             "n_configs": len(conf_files), "n_config_changes": len(config_diff),
             "config_ref": Path(ref_conf).name if ref_conf else None}
+
+    # Acteurs à risque : sur les événements ENRICHIS (géo/réputation), avant slim.
+    tables["acteurs"] = actors.build_actors(events, full, meta, cfg)
 
     return _emit(out, tables, meta, cfg)
 
