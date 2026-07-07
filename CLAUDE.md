@@ -491,6 +491,10 @@ du README : le mapping est indicatif (aide au reporting), pas une attribution.
    détail dans `flag()`, et/ou chunking par lot avec fusion des événements. Mesurer
    avant/après sur vrais logs T1 (procédure : pic RSS, sorties identiques — cf. P5
    phases 1+2).
-6. **UI Streamlit** : filtres persistants (sévérité, boîtier, règle, plage de dates)
-   sur l'onglet événements via `st.session_state`, + bouton « télécharger la sélection
-   filtrée » (CSV). Logique de filtrage dans `ui_helpers.py` (testable hors UI).
+6. **UI Streamlit** — ✅ FAIT (PR #18 mergée le 2026-07-07) : filtres sévérité/boîtier/
+   règle (`st.multiselect`) + plage de dates (`st.date_input`) sur l'onglet événements,
+   persistants via les `key=` des widgets (mécanisme natif `st.session_state`) ; bouton
+   « télécharger la sélection filtrée » (CSV). Logique de filtrage dans
+   `ui_helpers.filter_events` (pure, testable hors UI — `tests/test_ui_helpers.py`).
+   Vérifié en conditions réelles via `streamlit.testing.v1.AppTest` (upload fixture →
+   analyse → sélection filtre « critique » → légende mise à jour en conséquence).

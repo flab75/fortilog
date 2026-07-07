@@ -1,9 +1,10 @@
 """Tests pour ui_helpers.py — fonctions de préparation hors-UI."""
+import datetime
 import pandas as pd
 import pytest
 from fortilog.ui_helpers import (
     prepare_events, prepare_metrics, prepare_agg,
-    prepare_bursts, prepare_diff, prepare_chains, severity_badge, SEV_COLORS,
+    prepare_bursts, prepare_diff, prepare_chains, filter_events, severity_badge, SEV_COLORS,
 )
 
 
@@ -145,6 +146,50 @@ def test_prepare_chains_truncates_timestamps():
 def test_prepare_chains_empty():
     assert prepare_chains(pd.DataFrame()).empty
     assert prepare_chains(None).empty
+
+
+def test_filter_events_par_severite():
+    result = filter_events(_make_events(), severites=["critique"])
+    assert len(result) == 1
+    assert result["severite"].iloc[0] == "critique"
+
+
+def test_filter_events_par_boitier():
+    result = filter_events(_make_events(), boitiers=["T2"])
+    assert result.empty
+
+
+def test_filter_events_par_regle():
+    result = filter_events(_make_events(), regles=["Modif config compte"])
+    assert len(result) == 1
+    assert result["regle"].iloc[0] == "Modif config compte"
+
+
+def test_filter_events_par_plage_dates():
+    result = filter_events(_make_events(),
+                           date_debut=datetime.date(2026, 6, 23),
+                           date_fin=datetime.date(2026, 6, 23))
+    assert len(result) == 3  # tous les événements de la fixture sont le même jour
+
+    result2 = filter_events(_make_events(),
+                            date_debut=datetime.date(2026, 6, 24))
+    assert result2.empty
+
+
+def test_filter_events_combinaison():
+    result = filter_events(_make_events(), severites=["critique", "eleve"], boitiers=["T1"])
+    assert len(result) == 2
+    assert set(result["severite"]) == {"critique", "eleve"}
+
+
+def test_filter_events_sans_filtre_renvoie_tout():
+    result = filter_events(_make_events())
+    assert len(result) == 3
+
+
+def test_filter_events_vide():
+    assert filter_events(pd.DataFrame()).empty
+    assert filter_events(None).empty
 
 
 def test_prepare_metrics_with_chains():
