@@ -12,6 +12,8 @@ au principe directeur (l'outil signale, le verdict reste humain).
 from __future__ import annotations
 import pandas as pd
 
+import datetime as _dt
+
 from .common import SEV_ORDER
 from .actors import POIDS_DEFAUT, SCORE_COL, build_timeline
 
@@ -20,6 +22,14 @@ def _sev_counts(df):
     if df is None or df.empty or "severite" not in df.columns:
         return {}
     return df["severite"].value_counts().to_dict()
+
+
+def _hors_acquittes(df):
+    """Lignes hors constats acquittés : exclues du DÉCOMPTE d'alerte uniquement —
+    elles restent signalées partout avec leur tag [ACQUITTÉ le …]."""
+    if df is None or df.empty or "suivi" not in df.columns:
+        return df
+    return df[df["suivi"] != "acquitte"]
 
 
 def _period(tables):
@@ -81,6 +91,22 @@ def build_analysis(tables, meta, cfg) -> str:
              "[AVÉRÉ] = fait constaté ; [À CONFIRMER] = suspicion à valider hors logs.")
     L.append("")
 
+    # Suivi entre analyses : quoi de neuf depuis la dernière fois (si état antérieur)
+    sv = meta.get("suivi") or {}
+    if sv.get("warning"):
+        L.append(f"⚠ Suivi entre analyses indisponible : {sv['warning']}.")
+        L.append("")
+    elif sv.get("anterieur") and sv.get("date_precedente"):
+        try:
+            dp = _dt.date.fromisoformat(sv["date_precedente"]).strftime("%d/%m/%Y")
+        except ValueError:
+            dp = sv["date_precedente"]
+        acq = (f" {sv['n_acquittes']} constat(s) acquitté(s), signalés mais exclus "
+               f"du décompte d'alerte." if sv.get("n_acquittes") else "")
+        L.append(f"**{sv.get('n_constats', 0)} constat(s) dont "
+                 f"{sv.get('n_nouveaux', 0)} NOUVEAU(X) depuis l'analyse du {dp}.**{acq}")
+        L.append("")
+
     # 1. Périmètre
     h("## 1. Périmètre analysé")
     L.append(f"- Logs : {meta.get('n_files', 0)} fichier(s), "
@@ -104,9 +130,13 @@ def build_analysis(tables, meta, cfg) -> str:
     if ca is None or ca.empty:
         L.append("- Aucun fichier de configuration importé (ou aucun constat).")
     else:
-        sc = _sev_counts(ca)
+        ca_actifs = _hors_acquittes(ca)
+        sc = _sev_counts(ca_actifs)
         ligne = ", ".join(f"{k}={sc[k]}" for k in ["critique", "eleve", "moyen", "faible", "info"] if k in sc)
-        L.append(f"- {len(ca)} constat(s) d'audit sur {meta.get('n_configs', 0)} configuration(s) ({ligne}).")
+        n_acq = len(ca) - len(ca_actifs)
+        acq_txt = f" + {n_acq} acquitté(s) hors décompte" if n_acq else ""
+        L.append(f"- {len(ca_actifs)} constat(s) d'audit sur {meta.get('n_configs', 0)} "
+                 f"configuration(s) ({ligne}){acq_txt}.")
         # Constats groupés par type de règle ; SOUS chaque règle, ses constats
         # individuels détaillés (jusqu'à max_constats). Règles ordonnées par sévérité
         # max décroissante puis par volume.
@@ -163,9 +193,12 @@ def build_analysis(tables, meta, cfg) -> str:
     if events is None or events.empty:
         L.append("- Aucun log analysé.")
     else:
-        sc = _sev_counts(events)
+        ev_actifs = _hors_acquittes(events)
+        sc = _sev_counts(ev_actifs)
         ligne = ", ".join(f"{k}={sc[k]}" for k in ["critique", "eleve", "moyen", "faible", "info"] if k in sc)
-        L.append(f"- Événements signalés : {len(events)} ({ligne}).")
+        n_acq = len(events) - len(ev_actifs)
+        acq_txt = f" + {n_acq} acquitté(s) hors décompte" if n_acq else ""
+        L.append(f"- Événements signalés : {len(ev_actifs)} ({ligne}){acq_txt}.")
         # événements individuels les plus sévères (table déjà triée par sévérité décroissante)
         n_show = min(len(events), max_constats)
         if n_show and "regle" in events.columns:

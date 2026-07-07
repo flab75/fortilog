@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors
+from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi
 from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
 from .validate import validate_config
 
@@ -23,8 +23,10 @@ def _diff_boitiers(full: pd.DataFrame) -> list[pd.DataFrame]:
     return out
 
 
-def _emit(out, tables, meta, cfg):
+def _emit(out, tables, meta, cfg, etat_path=None):
     """Calcule la synthèse, écrit le classeur Excel + le rapport texte, renvoie (tables, meta)."""
+    # Suivi entre analyses : annote les tables (nouveau/connu/acquitté) AVANT la synthèse.
+    suivi.appliquer_suivi(tables, meta, etat_path or (out / suivi.FICHIER_ETAT))
     rapport = analysis.build_analysis(tables, meta, cfg)
     meta["analysis"] = rapport
     xlsx_path = out / "rapport_fortigate.xlsx"
@@ -56,7 +58,7 @@ def _compute_config_diff(ref_conf, conf_files, logs_dir, cfg, boitier_for):
     return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=cols)
 
 
-def run(input_dir, config_path, output_dir, ref_conf=None):
+def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None):
     cfg = yaml.safe_load(Path(config_path).read_text())
     errors = validate_config(cfg)
     if errors:
@@ -94,7 +96,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None):
                 "geo_available": False, "reputation_available": False,
                 "n_configs": len(conf_files), "n_config_changes": len(config_diff),
                 "config_ref": Path(ref_conf).name if ref_conf else None}
-        return _emit(out, tables, meta, cfg)
+        return _emit(out, tables, meta, cfg, etat_path)
 
     parts, meta_files = [], []
     for f in files:
@@ -209,7 +211,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None):
     # Acteurs à risque : sur les événements ENRICHIS (géo/réputation), avant slim.
     tables["acteurs"] = actors.build_actors(events, full, meta, cfg)
 
-    return _emit(out, tables, meta, cfg)
+    return _emit(out, tables, meta, cfg, etat_path)
 
 
 def main():
@@ -219,8 +221,10 @@ def main():
     ap.add_argument("--output", default="./rapport")
     ap.add_argument("--ref-conf", dest="ref_conf", default=None,
                     help="config .conf de référence/validée à comparer aux .conf du dossier")
+    ap.add_argument("--etat", dest="etat", default=None,
+                    help="chemin du fichier d'état de suivi (défaut : <output>/etat_suivi.json)")
     a = ap.parse_args()
-    run(a.input, a.config, a.output, ref_conf=a.ref_conf)
+    run(a.input, a.config, a.output, ref_conf=a.ref_conf, etat_path=a.etat)
 
 
 if __name__ == "__main__":

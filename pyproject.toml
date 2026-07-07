@@ -40,6 +40,7 @@ dev = ["pytest>=7"]
 fortilog        = "fortilog.main:main"
 fortilog-diff   = "fortilog.confdiff:main"
 fortilog-confgen = "fortilog.confgen:main"
+fortilog-ack    = "fortilog.ack:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

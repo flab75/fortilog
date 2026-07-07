@@ -80,11 +80,12 @@ fortilog --input ./logs --config config.yaml --output ./rapport
 - `--input` : dossier contenant les fichiers `.log` (un ou plusieurs).
 - `--config` : référentiel « du normal » + paramètres (voir `config.yaml`).
 - `--output` : produit `rapport_fortigate.txt` et `rapport_fortigate.xlsx`.
+- `--etat` : chemin du fichier d'état de suivi (défaut : `<output>/etat_suivi.json`).
 
 > Sans installation (`pip install`), les commandes `python -m fortilog.main`,
-> `python -m fortilog.confdiff` et `python -m fortilog.confgen` fonctionnent aussi.
+> `python -m fortilog.confdiff`, `python -m fortilog.confgen` et `python -m fortilog.ack` fonctionnent aussi.
 
-## Sorties (classeur, 12 feuilles)
+## Sorties (classeur, 13 feuilles)
 0. `Rapport` — **synthèse** qui décrit les résultats et explique les problèmes, en distinguant
    **[AVÉRÉ]** (état de config, volumes) de **[À CONFIRMER]** (suspicions). Chaque section
    (config, events, IP externes) détaille les constats les plus sévères individuellement
@@ -220,6 +221,28 @@ fortilog-diff reference.conf actuel.conf --logs ./logs    # --all pour toutes le
   Dans Streamlit : déposez un fichier dans **« Config de référence / validée »** avant de lancer
   l'analyse (onglet « 🔁 Comparaison config »).
 - Un écart de config n'est **pas** une compromission — à confirmer.
+
+## Suivi entre analyses & acquittement
+
+Chaque constat (événement, audit config, diff config) porte une **identité stable**
+(`constat_id`, sha256 tronqué de `famille|règle|boîtier|acteur` — ni timestamp ni
+volume : un même brute-force étalé sur 2 jours = un même constat). L'état est
+persisté dans `etat_suivi.json` (dossier `--output`, surchargeable par `--etat`),
+JSON lisible et éditable.
+
+- À chaque run, les constats sont marqués `nouveau` / `connu` / `acquitte`
+  (colonne `suivi` des feuilles Excel et de l'UI) ; la synthèse ouvre par
+  « X constats dont Y NOUVEAUX depuis l'analyse du JJ/MM/AAAA ».
+- **Acquittement** (faux positif assumé, documenté) :
+  ```bash
+  fortilog-ack --etat rapport/etat_suivi.json --list          # table id/statut/résumé
+  fortilog-ack --etat rapport/etat_suivi.json ID… --motif "…" # bascule en acquitté
+  ```
+  Un constat acquitté **reste signalé** (tag `[ACQUITTÉ le JJ/MM/AAAA]` dans le
+  détail) ; il est seulement **exclu du décompte d'alerte** de la synthèse — l'outil
+  ne cache jamais rien.
+- État absent = premier run (tout est `nouveau`) ; état corrompu → warning explicite,
+  analyse normale sans suivi, fichier laissé intact.
 
 ## Format & parsing
 - `clé="valeur"` (espaces gérés). **Guillemets et backslash échappés** par FortiGate

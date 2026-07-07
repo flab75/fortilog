@@ -14,7 +14,7 @@ SEV_COLORS = {
 }
 
 EVENTS_DISPLAY_COLS = [
-    "timestamp", "boitier", "severite", "regle", "detail",
+    "timestamp", "boitier", "severite", "suivi", "regle", "detail",
     "user", "srcip", "dstip", "logdesc", "source_file",
 ]
 
