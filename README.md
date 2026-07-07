@@ -81,6 +81,16 @@ fortilog --input ./logs --config config.yaml --output ./rapport
 - `--config` : référentiel « du normal » + paramètres (voir `config.yaml`).
 - `--output` : produit `rapport_fortigate.txt` et `rapport_fortigate.xlsx`.
 - `--etat` : chemin du fichier d'état de suivi (défaut : `<output>/etat_suivi.json`).
+- `--json DIR` : écrit en plus chaque table (`events`, `chains`, `agg`…) en
+  `DIR/<nom>.json` (`orient="records"`, dates au format ISO). Les sorties habituelles
+  (`.xlsx`, `.txt`) sont toujours produites — cette option s'ajoute, ne remplace rien.
+- `--csv DIR` : idem en `DIR/<nom>.csv` (UTF-8).
+- `--quiet` : supprime l'affichage du rapport sur stdout et la progression
+  d'ingestion sur stderr ; les fichiers de sortie sont toujours écrits.
+- **Code retour** (utile en cron/CI) : `0` si rien ≥ eleve, `1` si au moins un
+  événement eleve, `2` si au moins un critique.
+- Sans `--quiet`, une ligne de progression par fichier ingéré est affichée sur
+  stderr : `fichier N/M : nom.log (X lignes)`.
 
 > Sans installation (`pip install`), les commandes `python -m fortilog.main`,
 > `python -m fortilog.confdiff`, `python -m fortilog.confgen` et `python -m fortilog.ack` fonctionnent aussi.
