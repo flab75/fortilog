@@ -56,7 +56,8 @@ un brouillon depuis un ou plusieurs backups FortiGate, puis **relisez-le** avant
 ```bash
 fortilog-confgen FW-T1.conf FW-T2.conf -o config.generated.yaml   # --force pour écraser
 ```
-Dérive admins, plages internes, utilisateurs/groupes VPN, peers IPsec et DNS ; les
+Dérive admins, plages internes, pool SSL-VPN (`vpn ssl settings` → `tunnel-ip-pools`),
+utilisateurs/groupes VPN, peers IPsec et DNS ; les
 paramètres d'analyse prennent les défauts du projet. Le `mgmt` est heuristique (à vérifier)
 et `fichiers_boitier` est à compléter. Aucun secret n'est extrait. Également disponible dans
 l'UI Streamlit (section « 🧩 Générer un référentiel »). Renommez ensuite en `config.local.yaml`.
@@ -110,7 +111,8 @@ fortilog --input ./logs --config config.yaml --output ./rapport
 - **Exfiltration** : téléchargement de config/logs via GUI.
 - **Automation déclenchée** → info (l'event log ne donne pas l'action-type : vérifier en config).
 - **Réseau** : sortie boîtier vers destination non listée (moyen).
-- **Réseau** : accès depuis pool VPN → interface de management (élevé).
+- **Réseau** : accès depuis pool VPN → interface de management (élevé). Le pool est
+  configurable via `pool_vpn` (un CIDR ou une liste ; défaut `10.212.134.0/24` si absent).
 - **UTM/app-ctrl** : application bloquée par FortiGate (élevé) ; `apprisk="critical"` non bloquée
   hors whitelist (moyen, SUSPICION) ; catégorie Proxy hors whitelist (élevé). Whitelist configurable
   (`app_ctrl_whitelist`) — exclut par défaut `proxy-safebrowsing.googleapis.com` (Safe Browsing).

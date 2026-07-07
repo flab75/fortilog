@@ -74,6 +74,37 @@ def _net_key(s):
         return 0
 
 
+def _pool_vpn_cidrs(root) -> list[str]:
+    """CIDR du pool SSL-VPN : `vpn ssl settings` -> tunnel-ip-pools -> objets firewall address
+    (subnet ou iprange). Objet introuvable ou mal formé -> ignoré (rien inventer)."""
+    names: list[str] = []
+    for blk in find_blocks(root, "vpn ssl settings"):
+        names += _values(blk.settings.get("tunnel-ip-pools"))
+    if not names:
+        return []
+    addrs = {e.name: e.settings for e in _edits(root, "firewall address")}
+    cidrs: list[str] = []
+    for n in names:
+        s = addrs.get(n)
+        if not s:
+            continue
+        subnet = _values(s.get("subnet"))
+        if len(subnet) == 2:
+            try:
+                cidrs.append(str(ipaddress.ip_network(f"{subnet[0]}/{subnet[1]}", strict=False)))
+            except ValueError:
+                pass
+            continue
+        start, end = s.get("start-ip", "").strip(), s.get("end-ip", "").strip()
+        if start and end:
+            try:
+                cidrs += [str(net) for net in ipaddress.summarize_address_range(
+                    ipaddress.ip_address(start), ipaddress.ip_address(end))]
+            except ValueError:
+                pass
+    return sorted(set(cidrs), key=_net_key)
+
+
 def extract_one(text: str, fallback_name: str) -> dict:
     """Extrait le référentiel dérivable d'UN .conf. `mgmt` est heuristique (à vérifier)."""
     root = parse_config(text)
@@ -135,6 +166,7 @@ def extract_one(text: str, fallback_name: str) -> dict:
         "plages": plages, "admins": admins, "locaux": locaux,
         "vpn_groups": vpn_groups, "vpn_users": vpn_users,
         "ipsec_peers": peers, "dns": dns_ips, "logging": logging,
+        "pool_vpn": _pool_vpn_cidrs(root),
     }
 
 
@@ -144,7 +176,7 @@ def extract_referential(confs: dict) -> dict:
     ones = [extract_one(t, Path(n).stem) for n, t in confs.items()]
     boitiers, locaux = {}, {}
     admins, plages, vpn_groups, vpn_users = set(), set(), set(), set()
-    peers, dns, logging = set(), set(), set()
+    peers, dns, logging, pools = set(), set(), set(), set()
     heuristic_mgmt: list[str] = []
     for o in ones:
         boitiers[o["name"]] = {"wan": o["wan"], "mgmt": o["mgmt"], "wan_all": o["wan_all"]}
@@ -154,6 +186,7 @@ def extract_referential(confs: dict) -> dict:
         admins |= set(o["admins"]); plages |= set(o["plages"])
         vpn_groups |= set(o["vpn_groups"]); vpn_users |= set(o["vpn_users"])
         peers |= set(o["ipsec_peers"]); dns |= set(o["dns"]); logging |= set(o["logging"])
+        pools |= set(o["pool_vpn"])
     return {
         "boitiers": boitiers,
         "admins_connus": sorted(admins),
@@ -161,6 +194,7 @@ def extract_referential(confs: dict) -> dict:
         "groupes_vpn_legitimes": sorted(vpn_groups),
         "utilisateurs_locaux": locaux,
         "plages_internes": sorted(plages, key=_net_key),
+        "pool_vpn": sorted(pools, key=_net_key),
         "destinations_legitimes": {
             "ipsec_peers": sorted(peers, key=_ip_key),
             "dns": sorted(dns, key=_ip_key),
@@ -278,6 +312,15 @@ def render_config_yaml(ref: dict) -> str:
             L.append(f"  - {cidr}")
     else:
         L.append("  []   # aucune interface lan/dmz détectée — à compléter")
+    L.append("")
+
+    L.append("# Pool d'adresses SSL-VPN (R9 : accès depuis le pool VPN vers le management).")
+    if ref.get("pool_vpn"):
+        L.append("pool_vpn:")
+        for cidr in ref["pool_vpn"]:
+            L.append(f"  - {cidr}")
+    else:
+        L.append("pool_vpn: 10.212.134.0/24   # défaut projet — pool absent du .conf, à vérifier")
     L.append("")
 
     L.append("destinations_legitimes:")

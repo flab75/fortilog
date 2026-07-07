@@ -90,7 +90,9 @@ def _bruteforce_success_mask(df, ld, srcip, user, window_min, seuil):
 
 def run_detection(df: pd.DataFrame, cfg: dict, enricher=None) -> pd.DataFrame:
     nets = [ipaddress.ip_network(c.split("#")[0].strip()) for c in cfg.get("plages_internes", [])]
-    vpn_net = [ipaddress.ip_network("10.212.134.0/24")]
+    _pool = cfg.get("pool_vpn", "10.212.134.0/24")  # un CIDR ou une liste (R9)
+    vpn_net = [ipaddress.ip_network(str(c).split("#")[0].strip())
+               for c in ([_pool] if isinstance(_pool, str) else _pool)]
     admins = set(cfg.get("admins_connus", []))
     vpn_users = set(cfg.get("utilisateurs_vpn_actifs", []))
     vpn_groups = set(cfg.get("groupes_vpn_legitimes", []))
@@ -148,9 +150,13 @@ def run_detection(df: pd.DataFrame, cfg: dict, enricher=None) -> pd.DataFrame:
             sub_df["detail"] = detail[mask]
             parts.append(sub_df)
 
-    # 1. Login admin réussi
+    # 1. Login admin réussi. srcip absent -> portée inconnue : ni interne ni externe
+    # (jamais inventer une portée), libellé dédié en sévérité moyenne.
     ok = ld.eq("Admin login successful")
-    ext = ok & ~src_int
+    no_src = srcip.eq("")
+    flag(ok & no_src, "Login admin réussi, source indéterminée (srcip absent)", "moyen",
+         ("user=" + user))
+    ext = ok & ~src_int & ~no_src
     flag(ext, "Login admin réussi depuis source externe", "critique",
          ("user=" + user + " srcip=" + srcip))
     unk = ok & src_int & ~user.isin(admins)
