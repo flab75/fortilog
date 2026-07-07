@@ -13,7 +13,7 @@ def _entree(nom: str, path, age_max: int) -> dict:
     p = Path(path)
     if not p.exists():
         return {"nom": nom, "path": str(path), "age_jours": None, "perime": False}
-    age = int((time.time() - p.stat().st_mtime) // 86400)
+    age = max(0, int((time.time() - p.stat().st_mtime) // 86400))
     return {"nom": nom, "path": str(path), "age_jours": age, "perime": age > age_max}
 
 
