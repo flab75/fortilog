@@ -117,7 +117,7 @@ sévérité ≥ `timeline.severite_min` (défaut `eleve`) : rafales consécutive
 (règle, acteur) dans la même heure regroupées en « × N similaires de HH:MM à HH:MM »
 au-delà de `timeline.max_par_groupe` (défaut 3) — le compte exact est toujours conservé.
 
-## Détection (grille d'audit, 13 règles)
+## Détection (grille d'audit, 15 règles)
 - Login admin réussi depuis source **externe** (critique) / compte hors référentiel (élevé).
 - Brute-force sur **compte valide** (`passwd_invalid`, élevé) vs compte inexistant.
 - Tunnel **SSL-VPN** établi hors référentiel (critique).
@@ -142,6 +142,15 @@ au-delà de `timeline.max_par_groupe` (défaut 3) — le compte exact est toujou
   puis la rafale s'étend tant que les échecs s'enchaînent à moins d'une fenêtre d'écart —
   moyen (IP externe) / faible (interne). SUSPICION —
   du bruit d'Internet le plus souvent : l'intérêt est le volume et l'entrée au score acteur.
+- **Nouveauté comportementale par compte admin** (R14) : première IP source, ou premier pays,
+  vus pour ce compte → info (SUSPICION comportementale). Sans état persistant (voir suivi
+  ci-dessous), « jamais vu » dégrade honnêtement en « pas vu plus tôt dans cette analyse » ;
+  avec l'état, le libellé devient « historique inclus » et s'appuie sur l'historique
+  compte×pays des analyses précédentes (`etat_suivi.json`, clé `comptes_vus`).
+- **Impossible travel** (R15) : 2 pays incompatibles pour un même compte en moins de
+  `comportement.fenetre_minutes` (défaut 60) → élevé (SUSPICION). Nécessite la base géo
+  (`geo_db_path`) ; sans base, la détection est silencieusement absente (mention dans la
+  synthèse, comme pour la géo).
 
 Chaque événement porte une colonne `mitre` (technique MITRE ATT&CK associée à la règle,
 ex. `T1110 — Brute Force`). Ce mapping est **indicatif** (aide au reporting), jamais une
@@ -269,6 +278,8 @@ JSON lisible et éditable.
   ne cache jamais rien.
 - État absent = premier run (tout est `nouveau`) ; état corrompu → warning explicite,
   analyse normale sans suivi, fichier laissé intact.
+- Le même fichier porte aussi `comptes_vus` (`{compte: {pays: {premiere_vue}}}`) : historique
+  compte×pays alimentant la règle R14 (nouveauté comportementale) d'un run à l'autre.
 
 ## Format & parsing
 - `clé="valeur"` (espaces gérés). **Guillemets et backslash échappés** par FortiGate

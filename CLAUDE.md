@@ -133,7 +133,7 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
   comptes suspects, paramètres de rafale).
 - **Dépendances :** pandas, xlsxwriter, pyyaml, openpyxl.
 
-## Règles de détection implémentées (`detect.py`, 14 règles)
+## Règles de détection implémentées (`detect.py`, 15 règles)
 1. Login admin réussi depuis source **externe** → critique ; compte hors référentiel → élevé ; interne+connu → info.
 2. Brute-force sur **compte valide** (`passwd_invalid`) → élevé.
 3. Tunnel **SSL-VPN** établi hors référentiel (user/groupe inconnu) → critique.

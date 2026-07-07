@@ -198,6 +198,20 @@ def validate_config(cfg: dict) -> list[str]:
             if "debut" in vals and "fin" in vals and vals["debut"] >= vals["fin"]:
                 errors.append(f"horaires_ouvres : debut ({vals['debut']}) doit être < fin ({vals['fin']})")
 
+    # Nouveauté comportementale / impossible travel (R14/R15, section optionnelle)
+    cp = cfg.get("comportement")
+    if cp is not None:
+        if not isinstance(cp, dict):
+            errors.append(f"comportement : attendu un dictionnaire, reçu {type(cp).__name__}")
+        else:
+            fw_cp = cp.get("fenetre_minutes")
+            if fw_cp is not None:
+                try:
+                    if int(fw_cp) <= 0:
+                        errors.append(f"comportement.fenetre_minutes : doit être > 0, reçu {fw_cp}")
+                except (ValueError, TypeError):
+                    errors.append(f"comportement.fenetre_minutes : '{fw_cp}' n'est pas un entier valide")
+
     # Corrélation (section optionnelle) : fenêtre numérique, séquence = liste
     corr = cfg.get("correlation")
     if corr is not None:

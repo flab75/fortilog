@@ -322,6 +322,118 @@ def test_r13_passwd_invalid_exclu(cfg):
     assert ev[ev["regle"].str.contains("comptes inexistants", na=False)].empty
 
 
+# --- R14 / R15 : nouveauté comportementale + impossible travel ---
+
+class _FakePaysEnricher:
+    """FR : 203.0.113.10/.11/.30 — US : 198.51.100.20 — FR : 203.0.113.31."""
+    available = True
+
+    def lookup(self, ip):
+        pays = {"203.0.113.10": "FR", "203.0.113.11": "FR", "203.0.113.30": "FR",
+                "203.0.113.31": "FR", "198.51.100.20": "US"}.get(ip, "")
+        return {"pays": pays, "asn": "", "org": ""}
+
+
+def _detect_comportement(cfg, enricher=None, comptes_vus_prev=None):
+    from fortilog.main import load_file
+    from fortilog import normalize, detect
+    df = load_file(FIXTURES / "comportement_scenario.log")
+    df["timestamp"] = normalize.build_timestamp(df)
+    df["boitier"] = normalize.assign_boitier(df, cfg.get("boitiers", {}), cfg.get("fichiers_boitier"))
+    return detect.run_detection(df, cfg, enricher, comptes_vus_prev)
+
+
+def _regle(ev, mot):
+    return ev[ev["regle"].str.contains(mot, na=False)]
+
+
+def test_r14_ip_nouvelle_par_compte(cfg):
+    """Chaque nouvelle IP source pour un compte -> info, même sans enricher (aucun besoin de géo)."""
+    ev = _detect_comportement(cfg, enricher=None)
+    ip_new = _regle(ev, "IP non vue plus tôt")
+    # adminA (2 IP distinctes), adminC (2 IP distinctes), adminB (1 IP) -> 5 IP "nouvelles"
+    assert len(ip_new) == 5
+    assert (ip_new["severite"] == "info").all()
+
+
+def test_r14_pays_sans_etat_anterieur_libelle_meme_analyse(cfg):
+    """Sans comptes_vus_prev : libellé « pas vu plus tôt dans cette analyse »."""
+    ev = _detect_comportement(cfg, enricher=_FakePaysEnricher())
+    pays_new = _regle(ev, "un pays")
+    assert not pays_new.empty
+    assert (pays_new["regle"].str.contains("cette analyse")).all()
+    assert not (pays_new["regle"].str.contains("historique inclus")).any()
+    assert (pays_new["severite"] == "info").all()
+
+
+def test_r14_pays_avec_etat_anterieur_libelle_historique(cfg):
+    """Avec comptes_vus_prev non vide (même pour un autre compte) : libellé « historique inclus »."""
+    ev = _detect_comportement(cfg, enricher=_FakePaysEnricher(),
+                               comptes_vus_prev={"autre_compte": ["DE"]})
+    pays_new = _regle(ev, "un pays")
+    assert not pays_new.empty
+    assert (pays_new["regle"].str.contains("historique inclus")).all()
+
+
+def test_r14_pays_deja_connu_pour_ce_compte_pas_signale(cfg):
+    """Pays déjà vu pour CE compte dans l'historique persistant -> pas de nouveauté signalée."""
+    ev = _detect_comportement(cfg, enricher=_FakePaysEnricher(),
+                               comptes_vus_prev={"adminA": ["FR"]})
+    pays_new = _regle(ev, "un pays")
+    # adminA ne re-signale plus FR (connu) mais signale toujours US (jamais vu) ;
+    # adminB et adminC (FR, jamais vus pour eux) restent signalés.
+    assert not pays_new[pays_new["detail"].str.contains("user=adminA")]["detail"] \
+        .str.contains("pays=FR").any()
+    assert pays_new["detail"].str.contains("user=adminA.*pays=US", regex=True).any()
+
+
+def test_r14_sans_geo_pas_de_nouveaute_pays(cfg):
+    """Enricher absent (ou indisponible) : la nouveauté "pays"/impossible travel sont
+    silencieusement absentes -- seule la nouveauté IP (sans besoin de géo) reste active."""
+    ev = _detect_comportement(cfg, enricher=None)
+    assert _regle(ev, "un pays").empty
+    assert _regle(ev, "impossible travel").empty
+    assert not _regle(ev, "IP non vue plus tôt").empty
+
+
+def test_r15_impossible_travel_detecte(cfg):
+    """adminA : FR à 10:00 puis US à 10:15 (15 min) -> impossible travel, eleve."""
+    ev = _detect_comportement(cfg, enricher=_FakePaysEnricher())
+    travel = _regle(ev, "impossible travel")
+    assert len(travel) == 1
+    assert travel["severite"].iloc[0] == "eleve"
+    assert "user=adminA" in travel["detail"].iloc[0]
+    assert "FR -> US" in travel["detail"].iloc[0]
+
+
+def test_r15_meme_pays_pas_de_travel(cfg):
+    """adminC : FR à 14:00 puis FR à 14:10 (IP différente, même pays) -> pas d'impossible travel."""
+    ev = _detect_comportement(cfg, enricher=_FakePaysEnricher())
+    travel = _regle(ev, "impossible travel")
+    assert not travel["detail"].str.contains("adminC", na=False).any()
+
+
+def test_r15_fenetre_depassee_pas_de_travel(cfg):
+    """adminA revient en FR à 12:30, 2h15 après le passage en US (10:15) : hors fenêtre
+    (défaut 60 min) -> le conflit US/FR n'est plus dans la fenêtre glissante, pas de 2e travel."""
+    ev = _detect_comportement(cfg, enricher=_FakePaysEnricher())
+    travel = _regle(ev, "impossible travel")
+    # un seul événement travel au total (celui de 10:15), rien à 12:30
+    assert len(travel) == 1
+    assert travel["timestamp"].iloc[0].strftime("%H:%M") == "10:15"
+
+
+def test_r15_sans_enricher_disponible_rien(cfg):
+    """enricher présent mais available=False -> dégradation honnête, pas de travel/pays."""
+    class _Indisponible:
+        available = False
+        def lookup(self, ip):
+            return {"pays": "", "asn": "", "org": ""}
+    ev = _detect_comportement(cfg, enricher=_Indisponible())
+    assert _regle(ev, "impossible travel").empty
+    assert _regle(ev, "un pays").empty
+
+
 # --- Mapping MITRE ATT&CK ---
 
 def test_mitre_non_vide_et_format_sur_toutes_les_regles(cfg):

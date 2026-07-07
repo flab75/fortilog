@@ -302,6 +302,8 @@ def build_analysis(tables, meta, cfg) -> str:
             L.append(f"    {i}. {_ip_line(r)} — listes : {listes}.")
     if (se is None or se.empty) and (rep is None or rep.empty):
         L.append("- Pas d'enrichissement disponible (ni sources externes, ni listes de réputation).")
+    if not meta.get("geo_available", False):
+        L.append("- Détection *impossible travel* (comptes admin) indisponible : pas de base géo locale.")
     L.append("")
 
     # 5. Lecture d'ensemble

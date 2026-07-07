@@ -88,7 +88,10 @@ def _bruteforce_success_mask(df, ld, srcip, user, window_min, seuil):
     return hit, n_ech, par
 
 
-def run_detection(df: pd.DataFrame, cfg: dict, enricher=None) -> pd.DataFrame:
+def run_detection(df: pd.DataFrame, cfg: dict, enricher=None, comptes_vus_prev=None) -> pd.DataFrame:
+    """`comptes_vus_prev` : snapshot en lecture seule {compte: [pays déjà vus]} issu de
+    l'état persistant P2 (suivi.py) ; None/vide -> dégradation « pas vu plus tôt dans
+    CETTE analyse » (R14, voir plus bas)."""
     nets = [ipaddress.ip_network(c.split("#")[0].strip()) for c in cfg.get("plages_internes", [])]
     _pool = cfg.get("pool_vpn", "10.212.134.0/24")  # un CIDR ou une liste (R9)
     vpn_net = [ipaddress.ip_network(str(c).split("#")[0].strip())
@@ -306,9 +309,86 @@ def run_detection(df: pd.DataFrame, cfg: dict, enricher=None) -> pd.DataFrame:
             flag(hit13 & ~src_int, lbl13, "moyen", det13)
             flag(hit13 & src_int, lbl13, "faible", det13)
 
+    # 14. Nouveauté comportementale par compte admin : première IP source / premier
+    #     pays vus pour ce compte sur la période -> info (SUSPICION comportementale).
+    #     Sans état persistant P2 (comptes_vus_prev vide), « jamais vu » dégrade
+    #     honnêtement en « pas vu plus tôt dans CETTE analyse » (dit dans le libellé) ;
+    #     avec l'état, l'historique compte×pays des analyses précédentes s'ajoute.
+    # 15. Impossible travel : 2 pays incompatibles pour un même compte en moins de
+    #     `comportement.fenetre_minutes` (défaut 60) -> eleve (SUSPICION). Nécessite la
+    #     géo ; sans base, silencieusement absente (mention dans analysis.py, comme géo).
+    comptes_vus_courant: dict = {}
+    ip_new = pd.Series(False, index=df.index)
+    pays_new = pd.Series(False, index=df.index)
+    pays_col = pd.Series("", index=df.index)
+    travel_hit = pd.Series(False, index=df.index)
+    travel_detail = pd.Series("", index=df.index)
+    if ok.any() and "timestamp" in df.columns:
+        ts = df["timestamp"]
+        odf = pd.DataFrame({"t": ts[ok], "u": user[ok], "ip": srcip[ok]}) \
+            .dropna(subset=["t"]).sort_values("t")
+        geo_on = enricher is not None and getattr(enricher, "available", False)
+        _pays_cache: dict = {}
+
+        def _pays(ip):
+            if not geo_on or not ip:
+                return ""
+            if ip not in _pays_cache:
+                _pays_cache[ip] = enricher.lookup(ip).get("pays") or ""
+            return _pays_cache[ip]
+
+        travel_win = pd.Timedelta(
+            minutes=int((cfg.get("comportement") or {}).get("fenetre_minutes", 60)))
+        ips_vues, pays_vus, fenetre_travel = {}, {}, {}
+        for i, t, u, ip in zip(odf.index, odf["t"], odf["u"], odf["ip"]):
+            if not u:
+                continue
+            ips_c = ips_vues.setdefault(u, set())
+            if ip and ip not in ips_c:
+                ip_new.at[i] = True
+            ips_c.add(ip)
+
+            p = _pays(ip)
+            if not p:
+                continue
+            pays_c = pays_vus.setdefault(u, set())
+            pays_hist = set((comptes_vus_prev or {}).get(u, []))
+            if p not in pays_c and p not in pays_hist:
+                pays_new.at[i] = True
+                pays_col.at[i] = p
+            pays_c.add(p)
+            if p not in comptes_vus_courant.setdefault(u, []):
+                comptes_vus_courant[u].append(p)
+
+            buf = fenetre_travel.setdefault(u, [])
+            buf[:] = [(tt, pp) for tt, pp in buf if t - tt <= travel_win]
+            conflit = next(((tt, pp) for tt, pp in buf if pp != p), None)
+            if conflit:
+                travel_hit.at[i] = True
+                ecart = int((t - conflit[0]).total_seconds() // 60)
+                travel_detail.at[i] = f"{conflit[1]} -> {p} en {ecart} min"
+            buf.append((t, p))
+
+        flag(ip_new,
+             "Connexion admin depuis une IP non vue plus tôt dans cette analyse (SUSPICION comportementale)",
+             "info", ("user=" + user + " srcip=" + srcip))
+        if comptes_vus_prev:
+            regle_pays = ("Connexion admin depuis un pays jamais vu pour ce compte, "
+                          "historique inclus (SUSPICION comportementale)")
+        else:
+            regle_pays = ("Connexion admin depuis un pays non vu plus tôt dans cette analyse "
+                          "(SUSPICION comportementale)")
+        flag(pays_new, regle_pays, "info", ("user=" + user + " srcip=" + srcip + " pays=" + pays_col))
+        flag(travel_hit,
+             "Connexions admin depuis pays incompatibles en fenêtre courte — impossible travel (SUSPICION)",
+             "eleve", ("user=" + user + " srcip=" + srcip + " (" + travel_detail + ")"))
+
     if not parts:
-        return df.iloc[0:0].assign(regle="", severite="", detail="", mitre="", sev_rank=0)
-    out = pd.concat(parts)
-    out["mitre"] = out["regle"].map(MITRE_MAP).fillna("")  # indicatif ; règle inconnue -> vide
-    out["sev_rank"] = out["severite"].map(SEV_ORDER).fillna(0).astype(int)
-    return out.sort_values("sev_rank", ascending=False)
+        out = df.iloc[0:0].assign(regle="", severite="", detail="", mitre="", sev_rank=0)
+    else:
+        out = pd.concat(parts)
+        out["mitre"] = out["regle"].map(MITRE_MAP).fillna("")  # indicatif ; règle inconnue -> vide
+        out["sev_rank"] = out["severite"].map(SEV_ORDER).fillna(0).astype(int)
+        out = out.sort_values("sev_rank", ascending=False)
+    out.attrs["comportement_vus_courant"] = comptes_vus_courant
+    return out
