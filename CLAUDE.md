@@ -384,7 +384,7 @@ depuis la dernière analyse » ni d'acquitter un faux positif. **Quoi** : nouvea
   → tag présent + exclu du décompte ; état corrompu → warning + run OK ; stabilité de
   `constat_id` (même entrée = même id, timestamp différent = même id).
 
-### P3a — Fraîcheur des bases géo/ASN/réputation
+### P3a — Fraîcheur des bases géo/ASN/réputation — ✅ FAIT (PR #13 mergée le 2026-07-07, module bases.py)
 **Quoi** : à chaque run, calculer l'âge (mtime) de chaque fichier de base utilisé
 (`geo_db_path`, `asn_db_path`, chaque entrée de `reputation_lists`,
 `fortinet_ranges_file`). Stocker dans `meta["bases"]` : `[{nom, path, age_jours}]`.
