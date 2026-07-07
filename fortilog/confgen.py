@@ -220,6 +220,11 @@ bruteforce:
   fenetre_minutes: 60
   seuil_echecs: 5
 
+# R13 — rafale d'échecs name_invalid par IP (brute-force sur comptes inexistants). SUSPICION.
+bruteforce_name_invalid:
+  fenetre_minutes: 60
+  seuil_echecs: 20
+
 # R12 — horaires inhabituels (login admin réussi hors plage ouvrée). SUSPICION faible.
 horaires_ouvres:
   debut: 7

@@ -126,3 +126,10 @@ def test_pool_vpn_cidr_invalide(cfg):
     bad["pool_vpn"] = ["10.0.0.0/24", "not-a-cidr"]
     errors = validate_config(bad)
     assert any("pool_vpn" in e for e in errors)
+
+
+def test_bruteforce_name_invalid_seuil_invalide(cfg):
+    bad = copy.deepcopy(cfg)
+    bad["bruteforce_name_invalid"] = {"fenetre_minutes": 60, "seuil_echecs": 0}
+    errors = validate_config(bad)
+    assert any("bruteforce_name_invalid" in e for e in errors)

@@ -102,7 +102,7 @@ fortilog --input ./logs --config config.yaml --output ./rapport
 10. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
 11. `Referentiel` — la configuration du « normal » utilisée.
 
-## Détection (grille d'audit, 12 règles)
+## Détection (grille d'audit, 13 règles)
 - Login admin réussi depuis source **externe** (critique) / compte hors référentiel (élevé).
 - Brute-force sur **compte valide** (`passwd_invalid`, élevé) vs compte inexistant.
 - Tunnel **SSL-VPN** établi hors référentiel (critique).
@@ -121,6 +121,16 @@ fortilog --input ./logs --config config.yaml --output ./rapport
   Paramétrable (`bruteforce.seuil_echecs`, `bruteforce.fenetre_minutes`). SUSPICION, pas une preuve.
 - **Horaires inhabituels** : login admin réussi hors plage ouvrée (`horaires_ouvres`, défaut 7h-20h)
   ou le week-end → faible (SUSPICION comportementale, tunable au rythme de l'organisation).
+- **Rafale d'échecs sur comptes inexistants** (`name_invalid`) : ≥ N échecs (défaut 20,
+  `bruteforce_name_invalid.seuil_echecs`) depuis une même IP dans une fenêtre (défaut 60 min)
+  → **un seul événement par (IP, rafale continue)** — déclenchement au seuil par fenêtre,
+  puis la rafale s'étend tant que les échecs s'enchaînent à moins d'une fenêtre d'écart —
+  moyen (IP externe) / faible (interne). SUSPICION —
+  du bruit d'Internet le plus souvent : l'intérêt est le volume et l'entrée au score acteur.
+
+Chaque événement porte une colonne `mitre` (technique MITRE ATT&CK associée à la règle,
+ex. `T1110 — Brute Force`). Ce mapping est **indicatif** (aide au reporting), jamais une
+attribution.
 
 ## Types de logs UTM
 - `utm/app-ctrl` : analysé par les règles R10.

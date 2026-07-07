@@ -177,7 +177,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None):
     unifie_cols = TARGET_COLS + ["boitier", "timestamp", "source_file"]
     unifie = sel[unifie_cols]
 
-    EVENT_COLS = ["timestamp", "boitier", "severite", "regle", "detail", "logdesc",
+    EVENT_COLS = ["timestamp", "boitier", "severite", "regle", "mitre", "detail", "logdesc",
                   "user", "ui", "srcip", "srcip_portee", "srcip_pays", "srcip_asn",
                   "srcip_reputation", "dstip", "action", "status", "reason", "source_file"]
     events_slim = events[[c for c in EVENT_COLS if c in events.columns]] if not events.empty else events

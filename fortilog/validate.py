@@ -160,20 +160,22 @@ def validate_config(cfg: dict) -> list[str]:
                 if not isinstance(entry, str):
                     errors.append(f"app_ctrl_whitelist[{i}] : attendu une chaîne, reçu {type(entry).__name__}")
 
-    # Brute-force réussi (R11, section optionnelle) : fenêtre + seuil entiers > 0
-    bf = cfg.get("bruteforce")
-    if bf is not None:
-        if not isinstance(bf, dict):
-            errors.append(f"bruteforce : attendu un dictionnaire, reçu {type(bf).__name__}")
-        else:
-            for k in ("fenetre_minutes", "seuil_echecs"):
-                v = bf.get(k)
-                if v is not None:
-                    try:
-                        if int(v) <= 0:
-                            errors.append(f"bruteforce.{k} : doit être > 0, reçu {v}")
-                    except (ValueError, TypeError):
-                        errors.append(f"bruteforce.{k} : '{v}' n'est pas un entier valide")
+    # Brute-force R11 + rafales name_invalid R13 (sections optionnelles) :
+    # fenêtre + seuil entiers > 0
+    for section in ("bruteforce", "bruteforce_name_invalid"):
+        bf = cfg.get(section)
+        if bf is not None:
+            if not isinstance(bf, dict):
+                errors.append(f"{section} : attendu un dictionnaire, reçu {type(bf).__name__}")
+            else:
+                for k in ("fenetre_minutes", "seuil_echecs"):
+                    v = bf.get(k)
+                    if v is not None:
+                        try:
+                            if int(v) <= 0:
+                                errors.append(f"{section}.{k} : doit être > 0, reçu {v}")
+                        except (ValueError, TypeError):
+                            errors.append(f"{section}.{k} : '{v}' n'est pas un entier valide")
 
     # Horaires ouvrés (R12, section optionnelle) : debut/fin entiers 0-23, debut < fin
     ho = cfg.get("horaires_ouvres")

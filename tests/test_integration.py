@@ -286,3 +286,24 @@ def test_real_event_system_t1_no_false_chain(cfg):
     ev = detect.run_detection(df, cfg)
     chains = correlate.correlate_chains(ev, cfg)
     assert chains.empty, f"Fausse(s) chaîne(s) sur vrai fichier T1 : {chains['detail'].tolist() if not chains.empty else ''}"
+
+
+@pytest.mark.slow
+def test_r13_campagne_massive_bornee(cfg):
+    """La campagne name_invalid massive connue (T2, IP dense type 85.11.187.120) remonte
+    en un nombre borné d'événements R13 (< 1000, un par IP×fenêtre — jamais un par ligne).
+    NB : la campagne T1 est un spray distribué (~12 échecs/h max par IP), sous le seuil
+    par IP — R13 y reste silencieux par conception (le volume reste visible via
+    « Sources externes »)."""
+    from fortilog.main import load_file
+    from fortilog import normalize, detect
+    require_real_logs(REAL_LOGS_T2)
+    f = REAL_LOGS_T2 / "memory-event-system-2026_06_29.log"
+    if not f.exists():
+        pytest.skip(f"Fichier absent : {f}")
+    df = load_file(f)
+    df["timestamp"] = normalize.build_timestamp(df)
+    df["boitier"] = normalize.assign_boitier(df, cfg.get("boitiers", {}), cfg.get("fichiers_boitier"))
+    ev = detect.run_detection(df, cfg)
+    r13 = ev[ev["regle"].str.contains("comptes inexistants", na=False)]
+    assert 1 <= len(r13) < 1000, f"{len(r13)} événements R13"

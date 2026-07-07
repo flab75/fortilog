@@ -52,6 +52,13 @@ bruteforce:
   fenetre_minutes: 60
   seuil_echecs: 5
 
+# R13 — rafale d'échecs name_invalid par IP (brute-force sur comptes INEXISTANTS).
+# Bruit d'Internet le plus souvent : l'intérêt est le VOLUME. Un événement par
+# (IP, fenêtre). Seuil plus haut que R11 : aucun compte valide n'est en jeu. SUSPICION.
+bruteforce_name_invalid:
+  fenetre_minutes: 60
+  seuil_echecs: 20
+
 # R12 — horaires inhabituels : login admin RÉUSSI hors plage ouvrée -> SUSPICION
 # comportementale (faible). Ajuster `debut`/`fin` au rythme réel de l'organisation.
 horaires_ouvres:
