@@ -30,6 +30,8 @@ TARGET_COLS = ["date", "time", "tz", "eventtime", "logid", "type", "subtype",
                "srcport", "dstport", "action", "status", "reason", "group",
                "cfgpath", "cfgobj", "cfgattr", "remip", "tunnelip", "tunneltype",
                "service", "sentbyte", "rcvdbyte", "msg",
+               # event/vpn (sessions)
+               "tunnelid", "duration",
                # utm/app-ctrl
                "appid", "appcat", "app", "hostname", "apprisk", "direction", "policyid",
                # event/security-rating
@@ -41,10 +43,14 @@ TARGET_COLS = ["date", "time", "tz", "eventtime", "logid", "type", "subtype",
 # Le frame d'analyse ne garde que celles-ci : une colonne objet coûte ~8 o/cellule
 # rien qu'en pointeurs, donc en RETIRER est le plus gros levier mémoire.
 ANALYSIS_COLS = ["date", "time", "eventtime", "logid", "type", "subtype", "logdesc",
-                 "user", "ui", "srcip", "dstip", "action", "status", "reason", "group",
+                 "user", "ui", "srcip", "remip", "dstip", "action", "status", "reason", "group",
                  "cfgpath", "cfgobj", "app", "appcat", "apprisk", "hostname",
                  "auditscore", "criticalcount", "highcount", "mediumcount",
                  "lowcount", "passedcount", "auditreporttype"]
+
+# Colonnes lues EN PLUS d'ANALYSIS_COLS pour les seuls fichiers event/vpn (encart VPN) :
+# les charger pour tout le corpus coûterait 6 colonnes objet sur des millions de lignes.
+VPN_COLS = ["tunnelid", "duration", "sentbyte", "rcvdbyte", "tunnelip", "tunneltype"]
 
 # Le reste de TARGET_COLS : uniquement pour la feuille Excel « Données unifiées »,
 # jamais lu par une analyse -> relu à la demande pour les seules lignes affichées.

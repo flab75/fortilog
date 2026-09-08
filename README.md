@@ -70,7 +70,8 @@ streamlit run app.py
 ```
 Ouvre un navigateur : déposez vos fichiers `.log`, choisissez un `config.yaml`
 optionnel, cliquez **Lancer l'analyse**. Les résultats s'affichent en onglets
-(événements signalés colorés, tableau de bord, rafales, différentiels) et le
+(événements signalés colorés, sessions VPN, tableau de bord, rafales,
+différentiels, guide des logs) et le
 rapport `.xlsx` est téléchargeable directement. L'onglet « Événements signalés »
 propose des filtres (sévérité, boîtier, règle, plage de dates) et un bouton pour
 télécharger la sélection filtrée en CSV.
@@ -97,39 +98,45 @@ fortilog --input ./logs --config config.yaml --output ./rapport
 > Sans installation (`pip install`), les commandes `python -m fortilog.main`,
 > `python -m fortilog.confdiff`, `python -m fortilog.confgen` et `python -m fortilog.ack` fonctionnent aussi.
 
-## Sorties (classeur, 14 feuilles)
+## Sorties (classeur, 16 feuilles)
 0. `Rapport` — **synthèse** qui décrit les résultats et explique les problèmes, en distinguant
    **[AVÉRÉ]** (état de config, volumes) de **[À CONFIRMER]** (suspicions). Chaque section
    (config, events, IP externes) détaille les constats les plus sévères individuellement
    (réglable via `rapport.max_constats`, défaut 5). Aussi en tête du rapport texte et dans
    l'onglet « Rapport » de l'UI Streamlit.
 1. `Tableau de bord` — agrégats par boîtier/jour (échecs, logins OK, lockouts, SSL-VPN, passwd_invalid, IP uniques).
-2. `UTM descriptif` — top signatures/attaques, domaines/catégories, verdicts pour
+2. `Sessions VPN` — **une ligne = un tunnel** : début/fin, durée, motif de clôture,
+   volumes, IP source + géo/réputation, et une colonne `legitimite` descriptive
+   (voir « Encart Sessions VPN » ci-dessous).
+3. `UTM descriptif` — top signatures/attaques, domaines/catégories, verdicts pour
    `utm/ips`/`utm/webfilter`/`utm/dns`/`utm/antivirus` — **descriptif, sans règle
    d'alerte** (voir « Agrégats descriptifs UTM » ci-dessous).
-3. `Evenements signales` — événements à risque, colorés par sévérité (info→critique), enrichis portée/pays/ASN/réputation.
-4. `Acteurs a risque` — IP externes et comptes agrégés depuis les événements, triés par un
+4. `Evenements signales` — événements à risque, colorés par sévérité (info→critique), enrichis portée/pays/ASN/réputation.
+5. `Acteurs a risque` — IP externes et comptes agrégés depuis les événements, triés par un
    **score de priorisation transparent** : `score = 100×n_critique + 30×n_eleve + 10×n_moyen
    + 3×n_faible + 50×(réputation non vide) + 20×(nb règles distinctes − 1)` (pondérations :
    `acteurs.poids`, plafond `acteurs.max_lignes` défaut 100). Le score sert à **trier** les
    entités à investiguer, **jamais à conclure**. IP d'infrastructure connue (WAN/mgmt,
    peers/DNS) exclues.
-5. `Chaines suspectes` — séquences corrélées (accès→compte→exfiltration) — **à confirmer**.
-6. `IP malveillantes` — sources présentes dans une liste de réputation (threat intel) — **à confirmer**.
-7. `Audit config` — constats sur les `.conf` FortiGate importés (comptes, accès, automation) — **à confirmer**.
-8. `Comparaison config` — écarts (ajout/suppr/modif) vs une config de référence + attribution qui/quand — **à confirmer**.
-9. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
-10. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
-11. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
-12. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
-13. `Referentiel` — la configuration du « normal » utilisée.
+6. `Chaines suspectes` — séquences corrélées (accès→compte→exfiltration) — **à confirmer**.
+7. `IP malveillantes` — sources présentes dans une liste de réputation (threat intel) — **à confirmer**.
+8. `Audit config` — constats sur les `.conf` FortiGate importés (comptes, accès, automation) — **à confirmer**.
+9. `Comparaison config` — écarts (ajout/suppr/modif) vs une config de référence + attribution qui/quand — **à confirmer**.
+10. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
+11. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
+12. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
+13. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
+14. `Referentiel` — la configuration du « normal » utilisée.
+15. `Guide des logs` — à quoi sert chaque fichier de log FortiCloud, ce que l'outil en fait,
+   lesquels sont indispensables et lesquels ne servent à rien pour cette analyse
+   (voir « Guide des fichiers de log » ci-dessous).
 
 Le rapport de synthèse comporte aussi une **frise chronologique** des événements de
 sévérité ≥ `timeline.severite_min` (défaut `eleve`) : rafales consécutives de même
 (règle, acteur) dans la même heure regroupées en « × N similaires de HH:MM à HH:MM »
 au-delà de `timeline.max_par_groupe` (défaut 3) — le compte exact est toujours conservé.
 
-## Détection (grille d'audit, 15 règles)
+## Détection (grille d'audit, 17 règles)
 - Login admin réussi depuis source **externe** (critique) / compte hors référentiel (élevé).
 - Brute-force sur **compte valide** (`passwd_invalid`, élevé) vs compte inexistant.
 - Tunnel **SSL-VPN** établi hors référentiel (critique).
@@ -159,6 +166,31 @@ au-delà de `timeline.max_par_groupe` (défaut 3) — le compte exact est toujou
   ci-dessous), « jamais vu » dégrade honnêtement en « pas vu plus tôt dans cette analyse » ;
   avec l'état, le libellé devient « historique inclus » et s'appuie sur l'historique
   compte×pays des analyses précédentes (`etat_suivi.json`, clé `comptes_vus`).
+- **Échecs de login ciblant un compte du référentiel** (R16) : un compte qui **existe**
+  (`admins_connus` / `utilisateurs_vpn_actifs` / `utilisateurs_locaux`, comparaison
+  **insensible à la casse**) apparaît dans des échecs de login admin ou SSL-VPN.
+  Le motif d'échec ne tranche pas — côté SSL-VPN, `sslvpn_login_permission_denied` est
+  le même pour un compte inconnu et un mot de passe erroné. Le discriminant est le
+  **comportement de l'IP source** : a-t-elle aussi tenté des comptes qui n'existent pas ?
+  - ≥ `comptes_cibles.seuil_spray` (défaut 5) comptes hors référentiel tentés par la même IP
+    → **élevé**, et **critique** si ≥ `comptes_cibles.seuil_ip_distinctes` (défaut 2) IP de
+    ce type visent le même compte (campagne coordonnée) ;
+  - aucune autre tentative depuis cette IP → **info**, libellé « vraisemblablement
+    l'utilisateur légitime » (un salarié qui se trompe de mot de passe n'essaie qu'un compte).
+
+- **Accès réussi hors des pays attendus** (R17) : une connexion **aboutie** (login admin ou
+  tunnel SSL-VPN monté) depuis un pays absent de `pays_attendus` (config.yaml, codes ISO2,
+  liste vide = règle inactive) → **faible** (SUSPICION). Congés, VPN personnel et opérateur
+  mobile déplacent légitimement un utilisateur : l'alerte est volontairement basse. L'intérêt
+  principal est **l'inverse** — quand aucun accès réussi ne sort des pays attendus, la synthèse
+  le dit comme argument fort *contre* une compromission. Nécessite une base géo
+  (`geo_db_path`) ; sans base, la règle est silencieusement absente (aucun pays inventé).
+  Les IP internes et les pays inconnus de la base ne sont jamais signalés.
+
+  Un événement par **(compte, IP)** sur toute la période analysée — pas de fenêtre glissante :
+  ces campagnes s'étalent sur plusieurs jours à quelques essais par jour. Les variantes de
+  casse du nom (`nathalie`, `Nathalie`, `NATHALIE`) sont listées dans le détail : c'est un
+  indice d'énumération. SUSPICION — un verdict reste humain.
 - **Impossible travel** (R15) : 2 pays incompatibles pour un même compte en moins de
   `comportement.fenetre_minutes` (défaut 60) → élevé (SUSPICION). Nécessite la base géo
   (`geo_db_path`) ; sans base, la détection est silencieusement absente (mention dans la
@@ -167,6 +199,46 @@ au-delà de `timeline.max_par_groupe` (défaut 3) — le compte exact est toujou
 Chaque événement porte une colonne `mitre` (technique MITRE ATT&CK associée à la règle,
 ex. `T1110 — Brute Force`). Ce mapping est **indicatif** (aide au reporting), jamais une
 attribution.
+
+## Encart Sessions VPN (`vpn.py`)
+
+Vue dédiée aux accès distants, **utilisable seule** : il suffit de déposer les fichiers
+`*-event-vpn-*.log` (rien d'autre n'est requis) pour obtenir l'encart complet ; avec la
+totalité des logs, l'encart s'ajoute à l'analyse habituelle.
+
+- **Une ligne = un tunnel.** Appariement `SSL VPN tunnel up` / `tunnel down` par
+  `(boîtier, user, tunnelid)`. `statut` : `fermée`, `ouverte en fin de période`
+  (montée, jamais refermée dans les logs fournis) ou `montée avant la période analysée`
+  (un `down` sans `up` — la session existait avant le début de l'export). Aucune durée
+  n'est inventée pour les tunnels non appariés.
+- **Motif de clôture** lu tel quel dans le champ `reason` du `tunnel down` (observé sur
+  données réelles : `User requested termination of service`, `Lost the connection`,
+  `auth timeout`).
+- **Volumes et durée** = maximum vu sur les lignes du tunnel (`SSL VPN statistics` porte
+  les compteurs vivants ; en mode ssl-web le `tunnel down` les remet à zéro).
+- **Colonne `legitimite`** : cumul des écarts au référentiel (compte hors
+  `utilisateurs_vpn_actifs`, groupe hors `groupes_vpn_legitimes`, pays hors
+  `pays_attendus`, IP en liste de réputation, compte sans `two-factor` d'après le `.conf`).
+  Sinon « aucun écart au référentiel (à confirmer) ». **Descriptif, aucune sévérité** :
+  un écart n'est pas une compromission.
+- **Bruit TLS compté à part** : les lignes `user="N/A"` (`SSL VPN alert`,
+  `SSL VPN new connection`, `SSL VPN exit error`) ne sont pas des sessions ; leur volume
+  est rappelé séparément, comme celui des `SSL VPN login fail`.
+- **Sorties** : feuille « Sessions VPN », onglet Streamlit « 🔐 Sessions VPN » (métriques,
+  motifs, export CSV), section « SESSIONS VPN » du rapport texte et §3quinquies de la synthèse.
+- Les colonnes techniques nécessaires (`tunnelid`, `duration`, `sentbyte`, `rcvdbyte`,
+  `tunnelip`, `tunneltype` — `ingest.VPN_COLS`) sont chargées **uniquement** pour les
+  fichiers `event/vpn`, pour ne pas alourdir le reste de l'analyse.
+
+## Guide des fichiers de log (`logguide.py`)
+
+Catalogue statique : pour chaque type/sous-type FortiCloud, ce que le fichier contient,
+ce que l'outil en fait, et son utilité réelle (`INDISPENSABLE`, `Utile`, `Accessoire`,
+`Optionnel et LOURD`, `Descriptif seulement`), avec la mention « présent / non déposé »
+pour l'analyse courante. Sorties : dépliant « 📖 Quels fichiers de log déposer ? » sur la
+page d'accueil de l'UI (consultable **avant** tout upload : c'est lui qui dit quoi envoyer),
+feuille « Guide des logs », onglet Streamlit « 📖 Guide des logs », section du rapport texte. « Inutile » signifie **sans effet sur
+cette analyse**, pas « à supprimer de FortiCloud ».
 
 ## Types de logs UTM
 - `utm/app-ctrl` : analysé par les règles R10.
@@ -242,6 +314,11 @@ le CLI FortiGate et vérifie des **indices de compromission**, comparés au réf
 - Nom d'admin **voyou** (motif) → élevé ; **automation** `cli-script`/`webhook` (persistance) → élevé.
 - Accès admin **exposé** : `telnet`, ou GUI/SSH sur interface `role wan` → élevé.
 - Config **sauvegardée par un compte hors référentiel** (en-tête `user=`) → moyen.
+- Compte local **sans double authentification** (`config user local`, pas de `two-factor`) →
+  **élevé** si ce compte est par ailleurs visé par des échecs de login dans les logs analysés,
+  **moyen** sinon. Le détail indique la date du dernier changement de mot de passe.
+- **Portail SSL-VPN ouvert à toutes les IP sources** (`vpn ssl settings source-address all`) →
+  moyen : c'est ce qui rend le portail atteignable par les campagnes de devinage de comptes.
 
 On peut analyser des `.conf` **seuls** (sans logs). Tout est marqué **à confirmer** :
 un admin légitime récent peut être hors référentiel — ce n'est jamais une preuve.
@@ -325,7 +402,7 @@ JSON lisible et éditable.
 
 ## Tests
 
-Suite pytest versionnée : **173 tests rapides** + **9 tests sur vrais logs** (@slow) = **182 au total**.
+Suite pytest versionnée : **266 tests rapides** + **10 tests sur vrais logs** (@slow) = **276 au total**.
 
 ```bash
 # Tests rapides (fixtures synthétiques)
@@ -345,7 +422,7 @@ Couverture des tests :
 - **detect.py** : 28 cas (R1-R9 pos/nég, 6 cas R10a/b/c, 3 cas R11 brute-force, 2 cas R12 horaires).
 - **geo.py** : 22 cas (portée, lookup CSV/TSV/CIDR, enrichissement géo + réputation,
   dégradation, top sources, exclusion infra, exclusion bogon interne).
-- **confaudit.py** : 11 cas (parsing CLI, C1-C6, config propre sans critique, tri par sévérité).
+- **confaudit.py** : 14 cas (parsing CLI, C1-C8, config propre sans critique, tri par sévérité).
 - **analysis.py** : 13 cas (sections, constats détaillés par règle, `max_constats` configurable,
   tag [À CONFIRMER] sur SUSPICION, top events §3/§4, corrélation WAN↔brute-force, alerte brèche,
   mode config-seul, vide).

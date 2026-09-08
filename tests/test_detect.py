@@ -451,6 +451,9 @@ def test_mitre_non_vide_et_format_sur_toutes_les_regles(cfg):
     for fx in fixtures:
         ev = detect_on_fixture(fx, cfg)
         assert not ev.empty, f"{fx} : aucune détection"
+        # R16 « source unique » décrit un utilisateur vraisemblablement légitime :
+        # lui coller une technique ATT&CK serait une attribution mensongère.
+        ev = ev[~ev["regle"].str.startswith("Échecs sur compte existant, source unique")]
         assert (ev["mitre"] != "").all(), f"{fx} : mitre vide pour {set(ev.loc[ev['mitre'] == '', 'regle'])}"
         assert all(pat.match(m) for m in ev["mitre"]), f"{fx} : format mitre invalide"
 
@@ -461,3 +464,95 @@ def test_mitre_regle_inconnue_champ_vide():
     from fortilog.common import MITRE_MAP
     s = pd.Series(["Règle inventée"]).map(MITRE_MAP).fillna("")
     assert s.iloc[0] == ""
+
+
+# --- R16 : échecs ciblant un compte du référentiel -------------------------------
+# Discriminant : l'IP tente-t-elle AUSSI des comptes inexistants ? (cf. detect.py)
+
+def test_r16_compte_existant_ip_de_spray(cfg):
+    ev = detect_on_fixture("compte_cible_spray.log", cfg)
+    r16 = ev[ev["regle"].str.startswith("Échecs de login ciblant")]
+    # 2 IP de spray visent vpnuser1 -> 1 événement par (compte, IP), en critique
+    assert len(r16) == 2
+    assert set(r16["severite"]) == {"critique"}
+    d = " ".join(r16["detail"])
+    assert "vpnuser1" in d and "comptes hors référentiel" in d
+    # variantes de casse préservées dans le détail (indice d'énumération)
+    assert "VPNUSER1" in d and "Vpnuser1" in d
+    # les noms inexistants ne créent pas de constat R16
+    assert not r16["detail"].str.contains("muhammad").any()
+
+
+def test_r16_utilisateur_legitime_non_alarme(cfg):
+    ev = detect_on_fixture("compte_cible_legitime.log", cfg)
+    assert ev[ev["regle"].str.startswith("Échecs de login ciblant")].empty
+    info = ev[ev["regle"].str.startswith("Échecs sur compte existant, source unique")]
+    assert len(info) == 2                      # 2 IP, aucune n'a tenté d'autre compte
+    assert set(info["severite"]) == {"info"}
+    assert info["detail"].str.contains("aucun autre compte").all()
+
+
+def test_r16_desactivable(cfg):
+    cfg = dict(cfg, comptes_cibles={"actif": False})
+    ev = detect_on_fixture("compte_cible_spray.log", cfg)
+    assert ev[ev["regle"].str.startswith("Échecs")].empty
+
+
+def test_r16_mitre(cfg):
+    ev = detect_on_fixture("compte_cible_spray.log", cfg)
+    r16 = ev[ev["regle"].str.startswith("Échecs de login ciblant")]
+    assert (r16["mitre"] == "T1110 — Brute Force").all()
+
+
+def test_r16_campagne_distribuee_une_tentative_par_ip(cfg):
+    """4 IP, une seule tentative chacune, toujours le même compte existant : ce n'est
+    pas l'utilisateur légitime (cas réel : compte VPN visé par 18 IP dont 8 « solo »)."""
+    ev = detect_on_fixture("compte_cible_distribue.log", cfg)
+    r16 = ev[ev["regle"].str.startswith("Échecs de login ciblant")]
+    assert len(r16) == 4
+    assert set(r16["severite"]) == {"moyen"}
+    assert r16["detail"].str.contains("campagne distribuée").all()
+    assert r16["detail"].str.contains("4 IP distinctes le visent").all()
+    assert ev[ev["regle"].str.startswith("Échecs sur compte existant")].empty
+
+
+# --- R17 : accès réussi hors des pays attendus ---
+
+def test_r17_acces_hors_pays_attendus(cfg):
+    """Login admin réussi depuis les US alors que pays_attendus=[FR] -> faible (SUSPICION)."""
+    cfg["pays_attendus"] = ["FR"]
+    ev = _detect_comportement(cfg, enricher=_FakePaysEnricher())
+    r17 = _regle(ev, "hors des pays attendus")
+    assert not r17.empty
+    assert (r17["severite"] == "faible").all()
+    assert (r17["srcip"] == "198.51.100.20").all()   # les IP FR ne sont pas signalées
+    assert "pays=US" in r17["detail"].iloc[0]
+
+
+def test_r17_sans_base_geo_silencieux(cfg):
+    """Sans base géo, la règle est silencieusement absente (jamais de pays inventé)."""
+    cfg["pays_attendus"] = ["FR"]
+    assert _regle(_detect_comportement(cfg, enricher=None), "hors des pays attendus").empty
+
+
+def test_r17_desactivable(cfg):
+    """pays_attendus absent ou vide -> règle inactive (rétro-compatible)."""
+    cfg["pays_attendus"] = []
+    assert _regle(_detect_comportement(cfg, enricher=_FakePaysEnricher()),
+                  "hors des pays attendus").empty
+
+
+def test_r16_acces_reussi_depuis_une_ip_ayant_echoue(cfg):
+    """Même compte, même IP : échecs PUIS tunnel monté -> escalade en critique et
+    mention explicite dans le détail (le cas qui mérite une vérification immédiate)."""
+    ev = detect_on_fixture("compte_cible_succes.log", cfg)
+    r16 = ev[ev["regle"].str.startswith("Échecs de login ciblant")]
+    assert set(r16["severite"]) == {"critique"}
+    assert r16["detail"].str.contains("un accès a RÉUSSI").all()
+    assert r16["detail"].str.contains("203.0.113.11").all()
+
+
+def test_r16_sans_acces_reussi_le_dit(cfg):
+    ev = detect_on_fixture("compte_cible_distribue.log", cfg)
+    r16 = ev[ev["regle"].str.startswith("Échecs de login ciblant")]
+    assert r16["detail"].str.contains("aucun accès réussi sur ce compte").all()

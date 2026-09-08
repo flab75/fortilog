@@ -8,8 +8,8 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats
-from .common import SEV_ORDER
+from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats, vpn, logguide
+from .common import SEV_ORDER, FAIL_LOGDESC, str_col
 from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
 from .validate import validate_config
 
@@ -87,13 +87,15 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
             if any(p in name for p in pats):
                 return b
         return "inconnu"
-    config_audit = confaudit.audit_files(conf_files, cfg, boitier_map=_boitier_for)
+    # (l'audit .conf est joué plus bas quand des logs sont fournis : C7 a besoin de
+    #  savoir quels comptes sont visés par des échecs de login)
     # Comparaison à une config de RÉFÉRENCE (optionnelle) : qu'est-ce qui a changé / par qui.
     config_diff = _compute_config_diff(ref_conf, conf_files, input_dir if files else None,
                                        cfg, _boitier_for)
 
     if not files:
-        # Mode AUDIT CONFIG SEUL : import de .conf sans logs.
+        # Mode AUDIT CONFIG SEUL : import de .conf sans logs (aucun compte « visé » connu).
+        config_audit = confaudit.audit_files(conf_files, cfg, boitier_map=_boitier_for)
         empty = pd.DataFrame()
         ref_rows = [{"clé": k, "valeur": str(v)} for k, v in cfg.items()]
         tables = {"unifie": empty, "events": empty, "chains": empty, "agg": empty,
@@ -101,6 +103,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
                   "utm_descriptifs": empty,
                   "sources_externes": empty, "reputation": empty,
                   "config_audit": config_audit, "config_diff": config_diff,
+                  "vpn_sessions": empty, "log_guide": logguide.build_guide([]),
                   "ref": pd.DataFrame(ref_rows)}
         meta = {"n_files": 0, "n_rows": 0, "dedup": 0,
                 "files": [{"name": p.name, "type": "config", "subtype": "fortigate",
@@ -114,7 +117,8 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     n_files = len(files)
     for i, f in enumerate(files, start=1):
         t, s, reconnu = ingest.detect_type(f)
-        df = load_file(f, columns=ingest.ANALYSIS_COLS)  # colonnes d'affichage relues en 2ᵉ passe
+        cols = ingest.ANALYSIS_COLS + (ingest.VPN_COLS if (t, s) == ("event", "vpn") else [])
+        df = load_file(f, columns=cols)  # colonnes d'affichage relues en 2ᵉ passe
         df["type"] = df["type"].replace("", t)
         df["subtype"] = df["subtype"].replace("", s)
         meta_files.append({"name": f.name, "type": t, "subtype": s,
@@ -125,7 +129,13 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     full = pd.concat(parts, ignore_index=True)
     del parts  # libère les frames par fichier (évite le doublement transitoire au concat)
 
+    for c in ingest.VPN_COLS:  # absentes des fichiers non-VPN -> NaN au concat
+        full[c] = full[c].fillna("") if c in full.columns else ""
+
     full["timestamp"] = normalize.build_timestamp(full)
+    # Avant tout le reste : les logs event/vpn portent l'IP cliente dans `remip`
+    # (srcip vide) — sans ce repli, les IP d'attaque SSL-VPN sont invisibles partout.
+    full["srcip"] = normalize.fill_srcip(full)
     full["boitier"] = normalize.assign_boitier(full, cfg.get("boitiers", {}), cfg.get("fichiers_boitier"))
     full = normalize.deduplicate(full)
 
@@ -146,6 +156,15 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     comptes_vus_prev = suivi.charger_comptes_vus(etat_path or (out / suivi.FICHIER_ETAT))
 
     events = detect.run_detection(full, cfg, enricher, comptes_vus_prev)
+    # Audit .conf : joué ici pour croiser l'état de la config avec les logs — C7 distingue
+    # « compte sans 2FA » de « compte sans 2FA ET visé par des échecs ».
+    _fail = str_col(full, "logdesc").isin(FAIL_LOGDESC)
+    comptes_vises = set(str_col(full, "user")[_fail].str.lower().unique()) - {""}
+    config_audit = confaudit.audit_files(conf_files, cfg, boitier_map=_boitier_for,
+                                         comptes_vises=comptes_vises)
+    comptes_conf = confaudit.local_users_map(conf_files)
+    # Encart VPN : une ligne = un tunnel (connexion, clôture, motif, légitimité).
+    vpn_sessions, vpn_stats = vpn.build_sessions(full, cfg, comptes_conf, enricher, repdb)
     comportement_vus_courant = events.attrs.get("comportement_vus_courant", {})
     chains = correlate.correlate_chains(events, cfg)
 
@@ -219,6 +238,8 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
         "reputation": reputation,
         "config_audit": config_audit,
         "config_diff": config_diff,
+        "vpn_sessions": vpn_sessions,
+        "log_guide": logguide.build_guide(meta_files),
         "ref": pd.DataFrame(ref_rows),
     }
     meta = {"n_files": len(files), "n_rows": len(full),
@@ -227,11 +248,14 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
             "reputation_available": repdb.available,
             "n_configs": len(conf_files), "n_config_changes": len(config_diff),
             "config_ref": Path(ref_conf).name if ref_conf else None,
-            "comportement_vus_courant": comportement_vus_courant}
+            "comportement_vus_courant": comportement_vus_courant,
+            "vpn_stats": vpn_stats}
 
     # Acteurs à risque : sur les événements ENRICHIS (géo/réputation), avant slim.
     tables["acteurs"] = actors.build_actors(events, full, meta, cfg)
     tables["utm_descriptifs"] = utm_stats.build_utm_descriptifs(full, files, cfg)
+    # Couverture des comptes du référentiel (descriptif, pas de feuille dédiée)
+    meta["couverture_comptes"] = actors.build_couverture(full, cfg, comptes_conf).to_dict("records")
 
     return _emit(out, tables, meta, cfg, etat_path, quiet)
 

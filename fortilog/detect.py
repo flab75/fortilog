@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .common import SEV_ORDER, CFG_ACCOUNT_PATHS, MITRE_MAP, str_col
+from .common import SEV_ORDER, CFG_ACCOUNT_PATHS, MITRE_MAP, FAIL_LOGDESC, str_col
 from .geo import RangeTable
 
 
@@ -300,6 +300,124 @@ def run_detection(df: pd.DataFrame, cfg: dict, enricher=None, comptes_vus_prev=N
             lbl13 = "Rafale d'échecs sur comptes inexistants — name_invalid (SUSPICION)"
             flag(hit13 & ~src_int, lbl13, "moyen", det13)
             flag(hit13 & src_int, lbl13, "faible", det13)
+
+    # 16. Échecs de login visant un compte qui EXISTE dans le référentiel (SUSPICION).
+    #     Le motif d'échec ne suffit pas à trancher : `sslvpn_login_permission_denied`
+    #     est le même pour un compte inconnu et un mot de passe erroné. Le discriminant
+    #     retenu est mesuré sur de vrais exports : une IP d'attaque tente AUSSI des
+    #     dizaines de noms qui n'existent pas (66 à 339 comptes distincts observés),
+    #     là où l'utilisateur légitime qui se trompe de mot de passe n'en tente qu'UN.
+    #     D'où `seuil_spray` = nb de comptes hors référentiel tentés par la même IP.
+    #     Un événement par (compte, IP) sur toute la période — pas de fenêtre glissante :
+    #     ces campagnes s'étalent sur plusieurs jours à quelques essais par jour.
+    cc = cfg.get("comptes_cibles") or {}
+    if cc.get("actif", True) and known_users and "timestamp" in df.columns:
+        seuil_spray = int(cc.get("seuil_spray", 5))
+        seuil_ip = int(cc.get("seuil_ip_distinctes", 2))
+        seuil_campagne = int(cc.get("seuil_ip_campagne", 3))
+        known_low = {u.lower() for u in known_users}
+        u_low = user.str.lower()
+        fail16 = ld.isin(FAIL_LOGDESC) & user.ne("") & srcip.ne("")
+        cible = fail16 & u_low.isin(known_low)
+        if cible.any():
+            # Comptes HORS référentiel tentés par chaque IP (sur tous ses échecs).
+            fdf = pd.DataFrame({"ip": srcip[fail16], "u": u_low[fail16]})
+            spray = fdf[~fdf["u"].isin(known_low)].groupby("ip")["u"].nunique()
+            spray_ips = set(spray[spray >= seuil_spray].index)
+
+            cdf = pd.DataFrame({"ip": srcip[cible], "u": u_low[cible],
+                                "raw": user[cible], "t": df.loc[cible, "timestamp"]})
+            # nb d'IP « spray » distinctes visant le même compte -> ciblage coordonné
+            n_ips = cdf[cdf["ip"].isin(spray_ips)].groupby("u")["ip"].nunique()
+            # nb d'IP distinctes visant le compte, spray ou non : une campagne peut être
+            # DISTRIBUÉE (une seule tentative par IP, IP renouvelées) — vu sur vrais logs :
+            # un compte VPN visé par 18 IP dont 8 ne tentant que lui. Une IP « solo » sur un
+            # compte par ailleurs attaqué n'est donc pas l'utilisateur légitime.
+            n_ips_tot = cdf.groupby("u")["ip"].nunique()
+            # Le croisement qui tranche vraiment : ce compte a-t-il OUVERT une session
+            # sur la période, et depuis quelle IP ? Un compte visé sans aucun accès réussi
+            # n'a pas été compromis PENDANT la fenêtre analysée (dit tel quel, sans
+            # extrapoler au-delà). Un succès depuis une IP qui a AUSSI échoué sur ce
+            # compte est l'indice le plus fort d'une brèche -> à vérifier en priorité.
+            succ = (ok | ld.eq("SSL VPN tunnel up")) & user.ne("")
+            succ_ips = (pd.DataFrame({"u": u_low[succ], "ip": srcip[succ]})
+                        .groupby("u")["ip"].apply(lambda s: set(s) - {""}).to_dict())
+            fail_ips = cdf.groupby("u")["ip"].apply(set).to_dict()
+
+            hit16 = pd.Series(False, index=df.index)
+            det16 = pd.Series("", index=df.index)
+            sev16 = pd.Series("", index=df.index)
+            for (ip, u), grp in cdf.sort_values("t").groupby(["ip", "u"], sort=False):
+                first = grp.index[0]
+                hit16.at[first] = True
+                variantes = ", ".join(sorted(pd.unique(grp["raw"])))
+                bornes = ""
+                if grp["t"].notna().any():
+                    bornes = (f" entre {grp['t'].min().strftime('%d/%m %H:%M')}"
+                              f" et {grp['t'].max().strftime('%d/%m %H:%M')}")
+                sok = succ_ips.get(u, set())
+                douteux = sok & fail_ips.get(u, set())
+                if douteux:
+                    suffixe = (" ; ⚠ un accès a RÉUSSI sur ce compte depuis "
+                               + ", ".join(sorted(douteux))
+                               + " — IP ayant AUSSI échoué sur ce compte : À VÉRIFIER EN PRIORITÉ")
+                elif sok:
+                    suffixe = (" ; ce compte a par ailleurs ouvert une session depuis "
+                               + ", ".join(sorted(sok)[:3])
+                               + (" …" if len(sok) > 3 else "") + " (origine à valider)")
+                else:
+                    suffixe = " ; aucun accès réussi sur ce compte dans la période analysée"
+                if ip in spray_ips:
+                    sev16.at[first] = ("critique" if douteux or int(n_ips.get(u, 0)) >= seuil_ip
+                                       else "eleve")
+                    det16.at[first] = (
+                        f"{len(grp)} échec(s) sur le compte existant « {u} » depuis {ip}{bornes} ; "
+                        f"cette IP a aussi tenté {int(spray.get(ip, 0))} comptes hors référentiel "
+                        f"(variantes du nom vues : {variantes}){suffixe}")
+                elif int(n_ips.get(u, 0)) or int(n_ips_tot.get(u, 0)) >= seuil_campagne:
+                    sev16.at[first] = "critique" if douteux else "moyen"
+                    det16.at[first] = (
+                        f"{len(grp)} échec(s) sur le compte existant « {u} » depuis {ip}{bornes} ; "
+                        f"cette IP n'a tenté que ce compte, mais {int(n_ips_tot.get(u, 0))} IP "
+                        f"distinctes le visent — campagne distribuée "
+                        f"(variantes du nom vues : {variantes}){suffixe}")
+                else:
+                    sev16.at[first] = "critique" if douteux else "info"
+                    det16.at[first] = (
+                        f"{len(grp)} échec(s) sur le compte existant « {u} » depuis {ip}{bornes} ; "
+                        f"cette IP n'a tenté aucun autre compte et aucune autre IP ne vise ce "
+                        f"compte (variantes du nom vues : {variantes}){suffixe}")
+            lbl16 = "Échecs de login ciblant un compte du référentiel (SUSPICION)"
+            for lvl in ("critique", "eleve", "moyen"):
+                flag(hit16 & sev16.eq(lvl), lbl16, lvl, det16)
+            flag(hit16 & sev16.eq("info"),
+                 "Échecs sur compte existant, source unique — vraisemblablement l'utilisateur légitime",
+                 "info", det16)
+
+    # 17. Accès RÉUSSI depuis un pays hors des pays attendus (`pays_attendus`).
+    #     C'est du contexte, pas une preuve : congés, VPN personnel et opérateur mobile
+    #     déplacent légitimement un utilisateur -> sévérité `faible`, SUSPICION. L'intérêt
+    #     principal est l'INVERSE : quand aucun accès réussi ne sort des pays attendus,
+    #     c'est un argument fort contre une compromission (dit dans la synthèse).
+    #     Nécessite la base géo ; sans base, silencieusement absente (comme R15).
+    pays_attendus = {str(c).upper() for c in (cfg.get("pays_attendus") or [])}
+    geo_on = enricher is not None and getattr(enricher, "available", False)
+    if pays_attendus and geo_on:
+        succ17 = (ok | ld.eq("SSL VPN tunnel up")) & srcip.ne("") & ~src_int
+        if succ17.any():
+            _pc: dict = {}
+
+            def _p17(ip):
+                if ip not in _pc:
+                    _pc[ip] = (enricher.lookup(ip).get("pays") or "").upper()
+                return _pc[ip]
+
+            pays17 = srcip.where(succ17, "").map(lambda i: _p17(i) if i else "")
+            # ZZ / vide = pays inconnu de la base : ne rien conclure, ne pas signaler
+            hors = succ17 & ~pays17.isin(pays_attendus | {"", "ZZ"})
+            flag(hors, "Accès réussi hors des pays attendus (SUSPICION)", "faible",
+                 ("user=" + user + " srcip=" + srcip + " pays=" + pays17 +
+                  " (attendus : " + ", ".join(sorted(pays_attendus)) + ")"))
 
     # 14. Nouveauté comportementale par compte admin : première IP source / premier
     #     pays vus pour ce compte sur la période -> info (SUSPICION comportementale).

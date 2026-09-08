@@ -94,3 +94,49 @@ def test_audit_files_dataframe_sorted(cfg):
 def test_audit_files_empty():
     df = confaudit.audit_files([], {})
     assert df.empty
+
+
+# --- C7 / C8 : comptes locaux sans 2FA, portail SSL-VPN ouvert ---
+
+_CONF_VPN = """config user local
+    edit "nathalie"
+        set two-factor email
+        set passwd-time 2026-06-24 10:00:00
+    next
+    edit "guest"
+        set passwd-time 2026-06-24 10:00:00
+    next
+end
+config vpn ssl settings
+    set source-address all
+    set default-portal "web-access"
+end
+"""
+
+
+def test_parse_local_users():
+    u = confaudit.parse_local_users(_CONF_VPN)
+    assert u["nathalie"]["two_factor"] == "email"
+    assert u["guest"]["two_factor"] == ""          # absent -> pas de 2FA
+    assert u["guest"]["passwd_time"] == "2026-06-24 10:00:00"
+
+
+def test_c7_sans_2fa_moyen_puis_eleve_si_vise(cfg):
+    f = confaudit.audit_config(_CONF_VPN, cfg)
+    c7 = [x for x in f if "double authentification" in x["regle"]]
+    assert [x["severite"] for x in c7] == ["moyen"]   # nathalie a une 2FA, pas de constat
+    assert "guest" in c7[0]["detail"]
+
+    f2 = confaudit.audit_config(_CONF_VPN, cfg, comptes_vises={"guest"})
+    c7 = [x for x in f2 if "double authentification" in x["regle"]]
+    assert c7[0]["severite"] == "eleve" and "VISÉ" in c7[0]["regle"]
+
+
+def test_c8_portail_vpn_ouvert(cfg):
+    f = confaudit.audit_config(_CONF_VPN, cfg)
+    c8 = [x for x in f if "toutes les IP sources" in x["regle"]]
+    assert len(c8) == 1 and c8[0]["severite"] == "moyen"
+    # restreint -> plus de constat
+    assert not [x for x in confaudit.audit_config(
+        _CONF_VPN.replace("set source-address all", 'set source-address "FR"'), cfg)
+        if "toutes les IP sources" in x["regle"]]

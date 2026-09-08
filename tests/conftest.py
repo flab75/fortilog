@@ -48,5 +48,6 @@ def detect_on_fixture(name: str, cfg: dict) -> pd.DataFrame:
 
     df = load_file(FIXTURES / name)
     df["timestamp"] = normalize.build_timestamp(df)
+    df["srcip"] = normalize.fill_srcip(df)
     df["boitier"] = normalize.assign_boitier(df, cfg.get("boitiers", {}), cfg.get("fichiers_boitier"))
     return detect.run_detection(df, cfg)

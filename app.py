@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from fortilog.main import run
-from fortilog import confdiff, confgen
+from fortilog import confdiff, confgen, logguide
 from fortilog.common import SEV_ORDER
 from fortilog.ui_helpers import (
     prepare_events, prepare_metrics, prepare_agg,
@@ -52,6 +52,14 @@ st.set_page_config(
     layout="wide",
 )
 
+# 11 onglets ne tiennent pas sur une ligne : Streamlit les masque derrière une flèche
+# de défilement (le « Guide des logs », dernier, devenait invisible). On laisse la
+# barre passer à la ligne.
+st.markdown(
+    '<style>[data-testid="stTabs"] [role="tablist"]{flex-wrap:wrap}</style>',
+    unsafe_allow_html=True,
+)
+
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -81,6 +89,10 @@ st.caption(
     "Importez vos exports de logs FortiCloud/FortiGate, lancez l'analyse et "
     "téléchargez le rapport Excel."
 )
+
+# Guide disponible AVANT l'analyse : c'est lui qui dit quels fichiers déposer.
+with st.expander("📖 Quels fichiers de log déposer ? — guide des exports FortiCloud"):
+    st.markdown(logguide.guide_markdown(None))
 
 uploaded_files = st.file_uploader(
     "Déposer les fichiers de logs (.log ou .txt)",
@@ -198,9 +210,13 @@ if _res:
     n_chains = len(chains_df)
     config_diff_df = tables.get("config_diff")
     n_cdiff = 0 if config_diff_df is None else len(config_diff_df)
-    tab_report, tab_ev, tab_actors, tab_chains, tab_conf, tab_cdiff, tab_agg, tab_burst, tab_diff = st.tabs([
+    vpn_df = tables.get("vpn_sessions")
+    n_vpn = 0 if vpn_df is None else len(vpn_df)
+    (tab_report, tab_ev, tab_vpn, tab_actors, tab_chains, tab_conf, tab_cdiff,
+     tab_agg, tab_burst, tab_diff, tab_guide) = st.tabs([
         "📝 Rapport",
         "🚨 Événements signalés",
+        f"🔐 Sessions VPN ({n_vpn})",
         "🎯 Acteurs à risque",
         f"🔗 Chaînes suspectes ({n_chains})",
         f"🛠 Audit config ({n_config})",
@@ -208,6 +224,7 @@ if _res:
         "📊 Tableau de bord",
         "⚡ Rafales",
         "🔄 Différentiels",
+        "📖 Guide des logs",
     ])
 
     with tab_report:
@@ -250,6 +267,42 @@ if _res:
                     mime="text/csv",
                     key="ev_download_csv",
                 )
+
+    with tab_vpn:
+        vstats = meta.get("vpn_stats") or {}
+        if vpn_df is None or vpn_df.empty:
+            st.info("Aucune session VPN dans les logs fournis "
+                    "(déposez un fichier `*-event-vpn-*.log`).")
+        else:
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Tunnels", vstats.get("n_sessions", n_vpn))
+            c2.metric("Comptes", vstats.get("n_users", 0))
+            c3.metric("Encore ouvertes", vstats.get("n_ouvertes", 0))
+            c4.metric("Échecs de login", vstats.get("n_login_fail", 0))
+            if vstats.get("motifs"):
+                st.caption("Motifs de clôture : "
+                           + ", ".join(f"{k} ({v})" for k, v in vstats["motifs"].items()))
+            ecarts = vpn_df[~vpn_df["legitimite"].str.startswith("aucun écart")]
+            if ecarts.empty:
+                st.success("Aucune session ne présente d'écart au référentiel "
+                           "(compte, groupe, pays, réputation).")
+            else:
+                st.warning(f"⚠️ {len(ecarts)} session(s) avec au moins un écart — "
+                           "**à confirmer**, un écart n'est pas une compromission.")
+            st.dataframe(vpn_df, use_container_width=True, height=460)
+            st.download_button("⬇️ Télécharger les sessions VPN (CSV)",
+                               data=vpn_df.to_csv(index=False).encode("utf-8"),
+                               file_name="sessions_vpn.csv", mime="text/csv",
+                               key="vpn_download_csv")
+            st.caption(f"{vstats.get('n_bruit_tls', 0)} ligne(s) de bruit TLS sans utilisateur "
+                       "(SSL VPN alert / new connection / exit error) exclues : ce sont des "
+                       "poignées de main de scanners, pas des connexions.")
+
+    with tab_guide:
+        st.markdown(logguide.guide_markdown(meta.get("files")))
+        guide_df = tables.get("log_guide")
+        if guide_df is not None and not guide_df.empty:
+            st.dataframe(guide_df, use_container_width=True)
 
     with tab_actors:
         act_df = tables.get("acteurs")

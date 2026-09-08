@@ -14,6 +14,12 @@ CFG_ACCOUNT_PATHS = {
 }
 
 
+# Libellés FortiGate d'un échec d'authentification (admin GUI/SSH et portail SSL-VPN).
+# Le champ `reason` ne distingue pas compte inconnu / mot de passe erroné côté SSL-VPN :
+# ne jamais s'en servir pour conclure (cf. R16 dans detect.py).
+FAIL_LOGDESC = ("Admin login failed", "SSL VPN login fail")
+
+
 # Mapping INDICATIF règle -> technique MITRE ATT&CK (aide au reporting, jamais une
 # attribution). Clés = libellés exacts des règles de detect.py ; règle absente -> champ
 # vide. ID et noms vérifiés sur attack.mitre.org le 2026-07-07.
@@ -28,6 +34,8 @@ MITRE_MAP = {
     "Brute-force potentiellement réussi depuis source externe (SUSPICION)": "T1110 — Brute Force",
     "Succès admin après rafale d'échecs (interne — SUSPICION)": "T1110 — Brute Force",
     "Rafale d'échecs sur comptes inexistants — name_invalid (SUSPICION)": "T1110 — Brute Force",
+    "Échecs de login ciblant un compte du référentiel (SUSPICION)": "T1110 — Brute Force",
+    "Accès réussi hors des pays attendus (SUSPICION)": "T1078 — Valid Accounts",
     # R3 — accès distant externe
     "Tunnel SSL-VPN établi hors référentiel": "T1133 — External Remote Services",
     # R4 / R5 — création/modification de comptes

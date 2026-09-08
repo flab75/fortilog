@@ -45,3 +45,14 @@ def test_deduplicate_preserves_unique():
     df = load_fixture("bruteforce_passwd.log")
     deduped = normalize.deduplicate(df)
     assert len(deduped) == len(df)
+
+
+def test_fill_srcip_repli_remip():
+    """event/vpn : l'IP cliente est dans `remip`, `srcip` est vide."""
+    df = pd.DataFrame({"srcip": ["10.0.0.1", "", None], "remip": ["", "203.0.113.7", "198.51.100.9"]})
+    assert list(normalize.fill_srcip(df)) == ["10.0.0.1", "203.0.113.7", "198.51.100.9"]
+
+
+def test_fill_srcip_sans_remip_ne_invente_rien():
+    df = pd.DataFrame({"srcip": ["", "10.0.0.2"]})
+    assert list(normalize.fill_srcip(df)) == ["", "10.0.0.2"]
