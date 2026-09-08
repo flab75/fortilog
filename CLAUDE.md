@@ -359,8 +359,10 @@ suffit (vérifié : encart complet sur vrais logs en 48 s, sans `.conf` → 2FA 
 Catalogue **statique** `LOG_GUIDE[(type, subtype)] = (contenu, ce que l'outil en fait, utilité)`
 + `NOTES` (préfixes `memory-`/`forticloud-` et leurs périodes réelles, `.conf` ≠ log, mode
 VPN seul). `build_guide(meta["files"])` marque chaque type « présent / non déposé » et ajoute
-les types inconnus rencontrés. Sorties : feuille « Guide des logs » (dernière), onglet
-Streamlit « 📖 Guide des logs », section du rapport texte.
+les types inconnus rencontrés. `guide_markdown(None)` omet la ligne « dans cette analyse »
+(guide consulté avant tout upload). Sorties : dépliant sur la page d'accueil Streamlit
+(AVANT l'analyse — c'est lui qui dit quels logs déposer), feuille « Guide des logs »
+(dernière), onglet Streamlit « 📖 Guide des logs », section du rapport texte.
 **Garde-fou de libellé** : « Inutile » = *sans effet sur CETTE analyse*, jamais
 « à désactiver dans FortiCloud ».
 

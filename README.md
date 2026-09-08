@@ -235,8 +235,9 @@ totalité des logs, l'encart s'ajoute à l'analyse habituelle.
 Catalogue statique : pour chaque type/sous-type FortiCloud, ce que le fichier contient,
 ce que l'outil en fait, et son utilité réelle (`INDISPENSABLE`, `Utile`, `Accessoire`,
 `Optionnel et LOURD`, `Descriptif seulement`), avec la mention « présent / non déposé »
-pour l'analyse courante. Sorties : feuille « Guide des logs », onglet Streamlit
-« 📖 Guide des logs », section du rapport texte. « Inutile » signifie **sans effet sur
+pour l'analyse courante. Sorties : dépliant « 📖 Quels fichiers de log déposer ? » sur la
+page d'accueil de l'UI (consultable **avant** tout upload : c'est lui qui dit quoi envoyer),
+feuille « Guide des logs », onglet Streamlit « 📖 Guide des logs », section du rapport texte. « Inutile » signifie **sans effet sur
 cette analyse**, pas « à supprimer de FortiCloud ».
 
 ## Types de logs UTM

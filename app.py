@@ -90,6 +90,10 @@ st.caption(
     "téléchargez le rapport Excel."
 )
 
+# Guide disponible AVANT l'analyse : c'est lui qui dit quels fichiers déposer.
+with st.expander("📖 Quels fichiers de log déposer ? — guide des exports FortiCloud"):
+    st.markdown(logguide.guide_markdown(None))
+
 uploaded_files = st.file_uploader(
     "Déposer les fichiers de logs (.log ou .txt)",
     type=["log", "txt"],

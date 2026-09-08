@@ -105,13 +105,19 @@ def build_guide(meta_files) -> pd.DataFrame:
 
 
 def guide_markdown(meta_files) -> str:
-    """Même contenu en texte (rapport, onglet Streamlit)."""
+    """Même contenu en texte (rapport, onglet Streamlit).
+
+    Sans fichier (guide consulté AVANT toute analyse, pour savoir quoi déposer), la ligne
+    « dans cette analyse » n'aurait aucun sens : elle est omise.
+    """
+    presence = bool(meta_files)
     L = ["# GUIDE DES FICHIERS DE LOG", ""]
     for _, r in build_guide(meta_files).iterrows():
         L.append(f"**{r['type de log']}** — {r['utilité']}")
         L.append(f"  - contenu : {r['contenu']}")
         L.append(f"  - exploité par : {r['ce que l\'outil en fait']}")
-        L.append(f"  - dans cette analyse : {r['présent']}")
+        if presence:
+            L.append(f"  - dans cette analyse : {r['présent']}")
         L.append("")
     L += ["## À retenir", ""] + [f"- {n}" for n in NOTES]
     return "\n".join(L)
