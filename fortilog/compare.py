@@ -3,6 +3,8 @@
 from __future__ import annotations
 import pandas as pd
 
+from .common import FAIL_LOGDESC
+
 
 def aggregate(df: pd.DataFrame, bucket: str = "day") -> pd.DataFrame:
     freq = {"day": "D", "hour": "h"}.get(bucket, "D")
@@ -70,10 +72,10 @@ def _entity_set(df: pd.DataFrame, kind: str) -> set:
         m = (df.get("type", "").eq("traffic")) & (df.get("subtype", "").eq("local"))
         return set(df.loc[m, "dstip"].dropna().unique()) - {""}
     if kind == "noms_cibles":
-        m = df.get("logdesc", "").eq("Admin login failed")
+        m = df.get("logdesc", "").isin(FAIL_LOGDESC)
         return set(df.loc[m, "user"].dropna().unique()) - {""}
     if kind == "src_attaque":
-        m = df.get("logdesc", "").eq("Admin login failed")
+        m = df.get("logdesc", "").isin(FAIL_LOGDESC)
         return set(df.loc[m, "srcip"].dropna().unique()) - {""}
     return set()
 

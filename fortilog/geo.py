@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .common import FAIL_LOGDESC
+
 # Valeurs de portée (scope) — calculables SANS aucune base.
 INTERNE = "interne"
 EXTERNE = "externe"
@@ -272,7 +274,8 @@ def reputation_sources(full, cfg: dict, repdb: ReputationDB | None = None,
         return pd.DataFrame(columns=cols)
 
     ld = full.get("logdesc")
-    failed = (ld.fillna("").astype(str).eq("Admin login failed")
+    # échec = login admin OU portail SSL-VPN (les campagnes VPN sont invisibles sinon)
+    failed = (ld.fillna("").astype(str).isin(FAIL_LOGDESC)
               if ld is not None else pd.Series(False, index=full.index))
     g = pd.DataFrame({"srcip": src[mask], "failed": failed[mask].astype(int)})
     agg = (g.groupby("srcip")
@@ -329,7 +332,8 @@ def top_external_sources(full, cfg: dict, enricher: GeoEnricher | None = None, n
         return pd.DataFrame(columns=cols)
 
     ld = full.get("logdesc")
-    failed = (ld.fillna("").astype(str).eq("Admin login failed")
+    # échec = login admin OU portail SSL-VPN (les campagnes VPN sont invisibles sinon)
+    failed = (ld.fillna("").astype(str).isin(FAIL_LOGDESC)
               if ld is not None else pd.Series(False, index=full.index))
 
     g = pd.DataFrame({"srcip": src[ext_mask], "failed": failed[ext_mask].astype(int)})
