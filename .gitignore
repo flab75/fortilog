@@ -18,3 +18,4 @@ config.local.yaml
 
 # Référentiel généré par fortilog.confgen (contient de vraies valeurs)
 config.generated.yaml
+.serena/
