@@ -334,6 +334,15 @@ def run_detection(df: pd.DataFrame, cfg: dict, enricher=None, comptes_vus_prev=N
             # un compte VPN visé par 18 IP dont 8 ne tentant que lui. Une IP « solo » sur un
             # compte par ailleurs attaqué n'est donc pas l'utilisateur légitime.
             n_ips_tot = cdf.groupby("u")["ip"].nunique()
+            # Le croisement qui tranche vraiment : ce compte a-t-il OUVERT une session
+            # sur la période, et depuis quelle IP ? Un compte visé sans aucun accès réussi
+            # n'a pas été compromis PENDANT la fenêtre analysée (dit tel quel, sans
+            # extrapoler au-delà). Un succès depuis une IP qui a AUSSI échoué sur ce
+            # compte est l'indice le plus fort d'une brèche -> à vérifier en priorité.
+            succ = (ok | ld.eq("SSL VPN tunnel up")) & user.ne("")
+            succ_ips = (pd.DataFrame({"u": u_low[succ], "ip": srcip[succ]})
+                        .groupby("u")["ip"].apply(lambda s: set(s) - {""}).to_dict())
+            fail_ips = cdf.groupby("u")["ip"].apply(set).to_dict()
 
             hit16 = pd.Series(False, index=df.index)
             det16 = pd.Series("", index=df.index)
@@ -346,25 +355,38 @@ def run_detection(df: pd.DataFrame, cfg: dict, enricher=None, comptes_vus_prev=N
                 if grp["t"].notna().any():
                     bornes = (f" entre {grp['t'].min().strftime('%d/%m %H:%M')}"
                               f" et {grp['t'].max().strftime('%d/%m %H:%M')}")
+                sok = succ_ips.get(u, set())
+                douteux = sok & fail_ips.get(u, set())
+                if douteux:
+                    suffixe = (" ; ⚠ un accès a RÉUSSI sur ce compte depuis "
+                               + ", ".join(sorted(douteux))
+                               + " — IP ayant AUSSI échoué sur ce compte : À VÉRIFIER EN PRIORITÉ")
+                elif sok:
+                    suffixe = (" ; ce compte a par ailleurs ouvert une session depuis "
+                               + ", ".join(sorted(sok)[:3])
+                               + (" …" if len(sok) > 3 else "") + " (origine à valider)")
+                else:
+                    suffixe = " ; aucun accès réussi sur ce compte dans la période analysée"
                 if ip in spray_ips:
-                    sev16.at[first] = "critique" if int(n_ips.get(u, 0)) >= seuil_ip else "eleve"
+                    sev16.at[first] = ("critique" if douteux or int(n_ips.get(u, 0)) >= seuil_ip
+                                       else "eleve")
                     det16.at[first] = (
                         f"{len(grp)} échec(s) sur le compte existant « {u} » depuis {ip}{bornes} ; "
                         f"cette IP a aussi tenté {int(spray.get(ip, 0))} comptes hors référentiel "
-                        f"(variantes du nom vues : {variantes})")
+                        f"(variantes du nom vues : {variantes}){suffixe}")
                 elif int(n_ips.get(u, 0)) or int(n_ips_tot.get(u, 0)) >= seuil_campagne:
-                    sev16.at[first] = "moyen"
+                    sev16.at[first] = "critique" if douteux else "moyen"
                     det16.at[first] = (
                         f"{len(grp)} échec(s) sur le compte existant « {u} » depuis {ip}{bornes} ; "
                         f"cette IP n'a tenté que ce compte, mais {int(n_ips_tot.get(u, 0))} IP "
                         f"distinctes le visent — campagne distribuée "
-                        f"(variantes du nom vues : {variantes})")
+                        f"(variantes du nom vues : {variantes}){suffixe}")
                 else:
-                    sev16.at[first] = "info"
+                    sev16.at[first] = "critique" if douteux else "info"
                     det16.at[first] = (
                         f"{len(grp)} échec(s) sur le compte existant « {u} » depuis {ip}{bornes} ; "
                         f"cette IP n'a tenté aucun autre compte et aucune autre IP ne vise ce "
-                        f"compte (variantes du nom vues : {variantes})")
+                        f"compte (variantes du nom vues : {variantes}){suffixe}")
             lbl16 = "Échecs de login ciblant un compte du référentiel (SUSPICION)"
             for lvl in ("critique", "eleve", "moyen"):
                 flag(hit16 & sev16.eq(lvl), lbl16, lvl, det16)

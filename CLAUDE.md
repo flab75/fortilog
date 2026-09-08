@@ -105,6 +105,14 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
   - **C4** `automation-action` de type `cli-script`/`webhook` (persistance/exfil) → élevé.
   - **C5** `allowaccess` avec `telnet`, ou `http/https/ssh` sur interface `role wan` → élevé.
   - **C6** config sauvée par un compte hors référentiel (en-tête `user=`) → moyen.
+  - **C7** compte `user local` sans `two-factor` → **élevé** s'il est par ailleurs visé par
+    des échecs de login (croisement avec les logs, `comptes_vises`), **moyen** sinon. Constat
+    d'ÉTAT (avéré), pas une suspicion ; le détail donne la date du dernier mot de passe.
+  - **C8** `vpn ssl settings source-address(6) = all` (portail SSL-VPN joignable depuis
+    l'Internet entier) → moyen. C'est ce qui rend le portail atteignable par les campagnes
+    de devinage de comptes.
+- L'audit est joué **après** la détection quand des logs sont fournis (C7 a besoin des comptes
+  visés) ; en mode audit-config seul, `comptes_vises` est vide (C7 reste en moyen).
 - Sortie : table `config_audit` → feuille Excel « Audit config » + section rapport.
 - **Garde-fou** : tout est SUSPICION/à confirmer (un admin légitime récent peut être hors
   référentiel). Vérifié sur vrais .conf : 0 admin voyou, mais admins sans trusthost + **GUI
@@ -178,6 +186,10 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
     0 autre compte tenté → **info** « vraisemblablement l'utilisateur légitime ». Un événement
     par (compte, IP) sur toute la période (pas de fenêtre : campagnes étalées sur des jours).
     Variantes de casse listées dans le détail (indice d'énumération). SUSPICION.
+    Chaque constat dit aussi si le compte a **réellement ouvert une session** sur la période :
+    « aucun accès réussi », « a par ailleurs ouvert une session depuis <IP> (origine à valider) »,
+    ou — cas à vérifier en priorité — « ⚠ un accès a RÉUSSI depuis une IP ayant AUSSI échoué sur
+    ce compte », qui fait passer le constat en **critique**. Vérifié sur les vrais logs : 0 cas.
     Mesuré sur vrais logs (FW-HMBM-T1, 09/2026) : les 4 IP visant un compte VPN réel tentent
     65 à 338 comptes inexistants chacune ; une IP d'utilisateur légitime en tente 1. La
     séparation est totale — aucun réglage de seuil délicat.
@@ -305,7 +317,8 @@ VPN du 08/09 : 23 tunnels montés depuis des IP FR, 8 depuis des IP internes, **
 
 ## Couverture des comptes du référentiel (`actors.build_couverture`)
 Table PUREMENT DESCRIPTIVE (aucune sévérité — c'est R16 qui alerte) : pour chaque compte
-connu, volume d'échecs de login le visant, nb d'IP distinctes, variantes de casse vues.
+connu, volume d'échecs de login le visant, nb d'IP distinctes, variantes de casse vues, et —
+quand un `.conf` est fourni — l'état `double_auth` / `mdp_change` lu dans `config user local`.
 Stockée dans `meta["couverture_comptes"]`, rendue en section 3quater de la synthèse
 (pas de feuille Excel dédiée). Garde-fou de libellé : un compte à 0 échec est « pas encore
 ciblé », **jamais** « protégé ». La synthèse rappelle que des identifiants devinables

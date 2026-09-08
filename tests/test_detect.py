@@ -540,3 +540,19 @@ def test_r17_desactivable(cfg):
     cfg["pays_attendus"] = []
     assert _regle(_detect_comportement(cfg, enricher=_FakePaysEnricher()),
                   "hors des pays attendus").empty
+
+
+def test_r16_acces_reussi_depuis_une_ip_ayant_echoue(cfg):
+    """Même compte, même IP : échecs PUIS tunnel monté -> escalade en critique et
+    mention explicite dans le détail (le cas qui mérite une vérification immédiate)."""
+    ev = detect_on_fixture("compte_cible_succes.log", cfg)
+    r16 = ev[ev["regle"].str.startswith("Échecs de login ciblant")]
+    assert set(r16["severite"]) == {"critique"}
+    assert r16["detail"].str.contains("un accès a RÉUSSI").all()
+    assert r16["detail"].str.contains("203.0.113.11").all()
+
+
+def test_r16_sans_acces_reussi_le_dit(cfg):
+    ev = detect_on_fixture("compte_cible_distribue.log", cfg)
+    r16 = ev[ev["regle"].str.startswith("Échecs de login ciblant")]
+    assert r16["detail"].str.contains("aucun accès réussi sur ce compte").all()

@@ -170,7 +170,7 @@ def build_timeline(events, cfg) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=TIMELINE_COLS).reset_index(drop=True)
 
 
-def build_couverture(full, cfg) -> pd.DataFrame:
+def build_couverture(full, cfg, comptes_conf=None) -> pd.DataFrame:
     """Descriptif : quels comptes du référentiel sont visés par des échecs de login.
 
     Volume d'échecs et nombre d'IP distinctes par compte connu (comparaison insensible
@@ -183,8 +183,13 @@ def build_couverture(full, cfg) -> pd.DataFrame:
     connus = sorted(set(cfg.get("admins_connus", []))
                     | set(cfg.get("utilisateurs_vpn_actifs", []))
                     | set(sum(cfg.get("utilisateurs_locaux", {}).values(), [])))
+    cols = ["compte", "n_echecs", "n_ip", "variantes", "cible", "double_auth", "mdp_change"]
     if not connus or full is None or full.empty:
-        return pd.DataFrame(columns=["compte", "n_echecs", "n_ip", "variantes", "cible"])
+        return pd.DataFrame(columns=cols)
+    # État du compte lu dans le .conf quand il est fourni (2FA, date du mot de passe) :
+    # « visé ET sans double authentification » est la seule combinaison qui appelle une
+    # action. Sans .conf, les colonnes restent vides (rien n'est supposé).
+    conf = comptes_conf or {}
     ld = str_col(full, "logdesc")
     u_low = str_col(full, "user").str.lower()
     fail = ld.isin(FAIL_LOGDESC) & u_low.ne("")
@@ -193,8 +198,12 @@ def build_couverture(full, cfg) -> pd.DataFrame:
     rows = []
     for c in connus:
         g = sub[sub["u"] == c.lower()]
+        info = conf.get(c.lower(), {})
         rows.append({"compte": c, "n_echecs": len(g),
                      "n_ip": int(g["ip"].nunique()),
                      "variantes": ", ".join(sorted(pd.unique(g["raw"]))),
-                     "cible": "oui" if len(g) else "non"})
-    return pd.DataFrame(rows).sort_values("n_echecs", ascending=False, ignore_index=True)
+                     "cible": "oui" if len(g) else "non",
+                     "double_auth": (info.get("two_factor") or "non") if info else "",
+                     "mdp_change": info.get("passwd_time", "") if info else ""})
+    return (pd.DataFrame(rows, columns=cols)
+              .sort_values("n_echecs", ascending=False, ignore_index=True))

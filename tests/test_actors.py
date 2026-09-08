@@ -142,3 +142,21 @@ def test_timeline_vide_si_rien_au_dessus_du_seuil(cfg):
     ev["severite"] = "info"
     tl = build_timeline(ev, cfg)
     assert tl.empty and "acteur" in tl.columns
+
+
+def test_couverture_colonnes_conf():
+    """2FA / date de mot de passe viennent du .conf ; sans .conf, colonnes vides."""
+    from fortilog.actors import build_couverture
+    full = pd.DataFrame({
+        "logdesc": ["SSL VPN login fail", "SSL VPN login fail"],
+        "user": ["guest", "Guest"], "srcip": ["203.0.113.1", "203.0.113.2"]})
+    cfg = {"utilisateurs_locaux": {"T1": ["guest", "nathalie"]}}
+    conf = {"guest": {"nom": "guest", "two_factor": "", "passwd_time": "2026-06-24 10:00:00"},
+            "nathalie": {"nom": "nathalie", "two_factor": "email", "passwd_time": ""}}
+    cov = build_couverture(full, cfg, conf).set_index("compte")
+    assert cov.loc["guest", "n_echecs"] == 2 and cov.loc["guest", "n_ip"] == 2
+    assert cov.loc["guest", "double_auth"] == "non"
+    assert cov.loc["guest", "mdp_change"] == "2026-06-24 10:00:00"
+    assert cov.loc["nathalie", "double_auth"] == "email"
+    # sans .conf : rien n'est supposé
+    assert (build_couverture(full, cfg)["double_auth"] == "").all()

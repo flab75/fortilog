@@ -267,6 +267,11 @@ le CLI FortiGate et vérifie des **indices de compromission**, comparés au réf
 - Nom d'admin **voyou** (motif) → élevé ; **automation** `cli-script`/`webhook` (persistance) → élevé.
 - Accès admin **exposé** : `telnet`, ou GUI/SSH sur interface `role wan` → élevé.
 - Config **sauvegardée par un compte hors référentiel** (en-tête `user=`) → moyen.
+- Compte local **sans double authentification** (`config user local`, pas de `two-factor`) →
+  **élevé** si ce compte est par ailleurs visé par des échecs de login dans les logs analysés,
+  **moyen** sinon. Le détail indique la date du dernier changement de mot de passe.
+- **Portail SSL-VPN ouvert à toutes les IP sources** (`vpn ssl settings source-address all`) →
+  moyen : c'est ce qui rend le portail atteignable par les campagnes de devinage de comptes.
 
 On peut analyser des `.conf` **seuls** (sans logs). Tout est marqué **à confirmer** :
 un admin légitime récent peut être hors référentiel — ce n'est jamais une preuve.
@@ -370,7 +375,7 @@ Couverture des tests :
 - **detect.py** : 28 cas (R1-R9 pos/nég, 6 cas R10a/b/c, 3 cas R11 brute-force, 2 cas R12 horaires).
 - **geo.py** : 22 cas (portée, lookup CSV/TSV/CIDR, enrichissement géo + réputation,
   dégradation, top sources, exclusion infra, exclusion bogon interne).
-- **confaudit.py** : 11 cas (parsing CLI, C1-C6, config propre sans critique, tri par sévérité).
+- **confaudit.py** : 14 cas (parsing CLI, C1-C8, config propre sans critique, tri par sévérité).
 - **analysis.py** : 13 cas (sections, constats détaillés par règle, `max_constats` configurable,
   tag [À CONFIRMER] sur SUSPICION, top events §3/§4, corrélation WAN↔brute-force, alerte brèche,
   mode config-seul, vide).

@@ -293,8 +293,18 @@ def build_analysis(tables, meta, cfg) -> str:
             L.append(f"- [AVÉRÉ] {len(vises)} compte(s) du référentiel sur {len(cov)} "
                      "apparaissent dans des échecs de login.")
             for r in vises[:max_constats]:
+                # 2FA/date de mot de passe viennent du .conf quand il est fourni :
+                # « visé sans double authentification » est le seul cas actionnable.
+                etat = ""
+                if r.get("double_auth"):
+                    etat = (" — **sans double authentification**"
+                            if r["double_auth"] == "non"
+                            else f" — double authentification : {r['double_auth']}")
+                if r.get("mdp_change"):
+                    etat += f" ; mot de passe changé le {r['mdp_change']}"
                 L.append(f"  - **{r['compte']}** : {r['n_echecs']} échec(s), "
-                         f"{r['n_ip']} IP distincte(s) — variantes du nom vues : {r['variantes']}.")
+                         f"{r['n_ip']} IP distincte(s) — variantes du nom vues : "
+                         f"{r['variantes']}{etat}.")
             if len(vises) > max_constats:
                 L.append(f"  - … et {len(vises) - max_constats} autre(s).")
             L.append("- Les autres comptes du référentiel ne sont **pas encore** visés — "

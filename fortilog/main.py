@@ -9,7 +9,7 @@ import pandas as pd
 import yaml
 
 from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats
-from .common import SEV_ORDER
+from .common import SEV_ORDER, FAIL_LOGDESC, str_col
 from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
 from .validate import validate_config
 
@@ -87,13 +87,15 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
             if any(p in name for p in pats):
                 return b
         return "inconnu"
-    config_audit = confaudit.audit_files(conf_files, cfg, boitier_map=_boitier_for)
+    # (l'audit .conf est joué plus bas quand des logs sont fournis : C7 a besoin de
+    #  savoir quels comptes sont visés par des échecs de login)
     # Comparaison à une config de RÉFÉRENCE (optionnelle) : qu'est-ce qui a changé / par qui.
     config_diff = _compute_config_diff(ref_conf, conf_files, input_dir if files else None,
                                        cfg, _boitier_for)
 
     if not files:
-        # Mode AUDIT CONFIG SEUL : import de .conf sans logs.
+        # Mode AUDIT CONFIG SEUL : import de .conf sans logs (aucun compte « visé » connu).
+        config_audit = confaudit.audit_files(conf_files, cfg, boitier_map=_boitier_for)
         empty = pd.DataFrame()
         ref_rows = [{"clé": k, "valeur": str(v)} for k, v in cfg.items()]
         tables = {"unifie": empty, "events": empty, "chains": empty, "agg": empty,
@@ -149,6 +151,13 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     comptes_vus_prev = suivi.charger_comptes_vus(etat_path or (out / suivi.FICHIER_ETAT))
 
     events = detect.run_detection(full, cfg, enricher, comptes_vus_prev)
+    # Audit .conf : joué ici pour croiser l'état de la config avec les logs — C7 distingue
+    # « compte sans 2FA » de « compte sans 2FA ET visé par des échecs ».
+    _fail = str_col(full, "logdesc").isin(FAIL_LOGDESC)
+    comptes_vises = set(str_col(full, "user")[_fail].str.lower().unique()) - {""}
+    config_audit = confaudit.audit_files(conf_files, cfg, boitier_map=_boitier_for,
+                                         comptes_vises=comptes_vises)
+    comptes_conf = confaudit.local_users_map(conf_files)
     comportement_vus_courant = events.attrs.get("comportement_vus_courant", {})
     chains = correlate.correlate_chains(events, cfg)
 
@@ -236,7 +245,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     tables["acteurs"] = actors.build_actors(events, full, meta, cfg)
     tables["utm_descriptifs"] = utm_stats.build_utm_descriptifs(full, files, cfg)
     # Couverture des comptes du référentiel (descriptif, pas de feuille dédiée)
-    meta["couverture_comptes"] = actors.build_couverture(full, cfg).to_dict("records")
+    meta["couverture_comptes"] = actors.build_couverture(full, cfg, comptes_conf).to_dict("records")
 
     return _emit(out, tables, meta, cfg, etat_path, quiet)
 

@@ -83,7 +83,35 @@ def parse_header_user(text: str) -> str:
     return m.group(1) if m else ""
 
 
-def audit_config(text: str, cfg: dict, source_file: str = "", boitier: str = "inconnu") -> list[dict]:
+def parse_local_users(text: str) -> dict[str, dict]:
+    """`config user local` -> {nom_minuscule: {nom, two_factor, passwd_time}}.
+
+    Sert à C7 (compte sans double authentification) et à enrichir la table de
+    couverture des comptes. Aucun secret n'est lu (le hash `passwd` est ignoré).
+    """
+    out: dict[str, dict] = {}
+    for blk in find_blocks(parse_config(text), "user local"):
+        for u in _edit_children(blk):
+            tf = u.settings.get("two-factor", "").strip('"')
+            out[u.name.lower()] = {
+                "nom": u.name,
+                "two_factor": "" if tf in ("", "disable") else tf,
+                "passwd_time": u.settings.get("passwd-time", "").strip('"'),
+            }
+    return out
+
+
+def local_users_map(conf_paths) -> dict[str, dict]:
+    """Fusionne les comptes locaux de plusieurs .conf (dernier fichier gagne)."""
+    from pathlib import Path
+    out: dict[str, dict] = {}
+    for p in conf_paths:
+        out.update(parse_local_users(Path(p).read_text(errors="replace")))
+    return out
+
+
+def audit_config(text: str, cfg: dict, source_file: str = "", boitier: str = "inconnu",
+                 comptes_vises=()) -> list[dict]:
     """Applique la grille d'audit et renvoie une liste de constats (dicts)."""
     root = parse_config(text)
     admins = set(cfg.get("admins_connus", []))
@@ -146,6 +174,32 @@ def audit_config(text: str, cfg: dict, source_file: str = "", boitier: str = "in
                 add("Accès admin (GUI/SSH) exposé sur interface WAN", "eleve",
                     f"interface={itf.name} role=wan allowaccess={acc}")
 
+    # --- C7 : compte local sans double authentification ---
+    #     Constat d'ÉTAT (avéré), pas une suspicion. Élevé si le compte est par ailleurs
+    #     visé par des échecs de login (`comptes_vises`, fourni par l'analyse des logs) :
+    #     un identifiant devinable sans 2ᵉ facteur ne tient que par son mot de passe.
+    vises = {str(u).lower() for u in comptes_vises}
+    for nom_low, u in parse_local_users(text).items():
+        if u["two_factor"]:
+            continue
+        mdp = f" dernier mot de passe : {u['passwd_time']}" if u["passwd_time"] else \
+              " date de mot de passe absente de la config"
+        if nom_low in vises:
+            add("Compte local sans double authentification, VISÉ par des échecs de login",
+                "eleve", f"user={u['nom']} (aucun two-factor ;{mdp})")
+        else:
+            add("Compte local sans double authentification", "moyen",
+                f"user={u['nom']} (aucun two-factor ;{mdp})")
+
+    # --- C8 : portail SSL-VPN joignable depuis l'Internet entier ---
+    for blk in find_blocks(root, "vpn ssl settings"):
+        for k in ("source-address", "source-address6"):
+            if blk.settings.get(k, "").strip('"') == "all":
+                add("Portail SSL-VPN ouvert à toutes les IP sources (surface d'exposition)",
+                    "moyen", f"vpn ssl settings {k}=all (aucune restriction d'origine ; "
+                             f"c'est ce qui rend le portail atteignable par les campagnes "
+                             f"de devinage de comptes)")
+
     # --- C6 : Config sauvegardée par un compte hors référentiel ---
     saver = parse_header_user(text)
     if saver and saver not in admins:
@@ -155,7 +209,7 @@ def audit_config(text: str, cfg: dict, source_file: str = "", boitier: str = "in
     return findings
 
 
-def audit_files(conf_paths, cfg: dict, boitier_map=None) -> pd.DataFrame:
+def audit_files(conf_paths, cfg: dict, boitier_map=None, comptes_vises=()) -> pd.DataFrame:
     """Audite plusieurs fichiers .conf -> DataFrame triée par sévérité.
     boitier_map(source_file) -> boitier (optionnel)."""
     from pathlib import Path
@@ -164,7 +218,8 @@ def audit_files(conf_paths, cfg: dict, boitier_map=None) -> pd.DataFrame:
         p = Path(p)
         text = p.read_text(errors="replace")
         boitier = boitier_map(p.name) if boitier_map else "inconnu"
-        rows.extend(audit_config(text, cfg, source_file=p.name, boitier=boitier))
+        rows.extend(audit_config(text, cfg, source_file=p.name, boitier=boitier,
+                                 comptes_vises=comptes_vises))
     cols = ["boitier", "source_file", "severite", "regle", "detail"]
     if not rows:
         return pd.DataFrame(columns=cols)
