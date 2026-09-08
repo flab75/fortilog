@@ -52,6 +52,14 @@ st.set_page_config(
     layout="wide",
 )
 
+# 11 onglets ne tiennent pas sur une ligne : Streamlit les masque derrière une flèche
+# de défilement (le « Guide des logs », dernier, devenait invisible). On laisse la
+# barre passer à la ligne.
+st.markdown(
+    '<style>[data-testid="stTabs"] [role="tablist"]{flex-wrap:wrap}</style>',
+    unsafe_allow_html=True,
+)
+
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 
