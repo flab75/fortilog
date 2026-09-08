@@ -177,6 +177,23 @@ def validate_config(cfg: dict) -> list[str]:
                         except (ValueError, TypeError):
                             errors.append(f"{section}.{k} : '{v}' n'est pas un entier valide")
 
+    # Comptes ciblés (R16, section optionnelle) : actif booléen, seuils entiers > 0
+    cc = cfg.get("comptes_cibles")
+    if cc is not None:
+        if not isinstance(cc, dict):
+            errors.append(f"comptes_cibles : attendu un dictionnaire, reçu {type(cc).__name__}")
+        else:
+            if cc.get("actif") is not None and not isinstance(cc.get("actif"), bool):
+                errors.append(f"comptes_cibles.actif : attendu un booléen, reçu {cc.get('actif')!r}")
+            for k in ("seuil_spray", "seuil_ip_distinctes"):
+                v = cc.get(k)
+                if v is not None:
+                    try:
+                        if int(v) <= 0:
+                            errors.append(f"comptes_cibles.{k} : doit être > 0, reçu {v}")
+                    except (ValueError, TypeError):
+                        errors.append(f"comptes_cibles.{k} : '{v}' n'est pas un entier valide")
+
     # Horaires ouvrés (R12, section optionnelle) : debut/fin entiers 0-23, debut < fin
     ho = cfg.get("horaires_ouvres")
     if ho is not None:

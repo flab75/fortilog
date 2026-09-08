@@ -159,6 +159,22 @@ au-delà de `timeline.max_par_groupe` (défaut 3) — le compte exact est toujou
   ci-dessous), « jamais vu » dégrade honnêtement en « pas vu plus tôt dans cette analyse » ;
   avec l'état, le libellé devient « historique inclus » et s'appuie sur l'historique
   compte×pays des analyses précédentes (`etat_suivi.json`, clé `comptes_vus`).
+- **Échecs de login ciblant un compte du référentiel** (R16) : un compte qui **existe**
+  (`admins_connus` / `utilisateurs_vpn_actifs` / `utilisateurs_locaux`, comparaison
+  **insensible à la casse**) apparaît dans des échecs de login admin ou SSL-VPN.
+  Le motif d'échec ne tranche pas — côté SSL-VPN, `sslvpn_login_permission_denied` est
+  le même pour un compte inconnu et un mot de passe erroné. Le discriminant est le
+  **comportement de l'IP source** : a-t-elle aussi tenté des comptes qui n'existent pas ?
+  - ≥ `comptes_cibles.seuil_spray` (défaut 5) comptes hors référentiel tentés par la même IP
+    → **élevé**, et **critique** si ≥ `comptes_cibles.seuil_ip_distinctes` (défaut 2) IP de
+    ce type visent le même compte (campagne coordonnée) ;
+  - aucune autre tentative depuis cette IP → **info**, libellé « vraisemblablement
+    l'utilisateur légitime » (un salarié qui se trompe de mot de passe n'essaie qu'un compte).
+
+  Un événement par **(compte, IP)** sur toute la période analysée — pas de fenêtre glissante :
+  ces campagnes s'étalent sur plusieurs jours à quelques essais par jour. Les variantes de
+  casse du nom (`nathalie`, `Nathalie`, `NATHALIE`) sont listées dans le détail : c'est un
+  indice d'énumération. SUSPICION — un verdict reste humain.
 - **Impossible travel** (R15) : 2 pays incompatibles pour un même compte en moins de
   `comportement.fenetre_minutes` (défaut 60) → élevé (SUSPICION). Nécessite la base géo
   (`geo_db_path`) ; sans base, la détection est silencieusement absente (mention dans la

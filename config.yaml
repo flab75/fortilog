@@ -59,6 +59,16 @@ bruteforce_name_invalid:
   fenetre_minutes: 60
   seuil_echecs: 20
 
+# R16 — échecs de login visant un compte qui EXISTE dans le référentiel.
+# Le motif d'échec ne tranche pas (`sslvpn_login_permission_denied` est le même pour un
+# compte inconnu et un mot de passe erroné) : le discriminant est le comportement de l'IP.
+# Une IP d'attaque tente aussi des dizaines de comptes inexistants ; l'utilisateur
+# légitime qui se trompe de mot de passe n'en tente qu'un (mesuré sur vrais exports).
+comptes_cibles:
+  actif: true
+  seuil_spray: 5          # comptes hors référentiel tentés par la même IP -> attaque ciblée
+  seuil_ip_distinctes: 2  # nb d'IP d'attaque visant le même compte -> critique
+
 # R12 — horaires inhabituels : login admin RÉUSSI hors plage ouvrée -> SUSPICION
 # comportementale (faible). Ajuster `debut`/`fin` au rythme réel de l'organisation.
 horaires_ouvres:

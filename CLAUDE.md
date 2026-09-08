@@ -133,7 +133,7 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
   comptes suspects, paramètres de rafale).
 - **Dépendances :** pandas, xlsxwriter, pyyaml, openpyxl.
 
-## Règles de détection implémentées (`detect.py`, 15 règles)
+## Règles de détection implémentées (`detect.py`, 16 règles)
 1. Login admin réussi depuis source **externe** → critique ; compte hors référentiel → élevé ; interne+connu → info.
 2. Brute-force sur **compte valide** (`passwd_invalid`) → élevé.
 3. Tunnel **SSL-VPN** établi hors référentiel (user/groupe inconnu) → critique.
@@ -167,6 +167,20 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
     `fin`, défaut 7h-20h) ou le week-end (`alerte_weekend`) → **faible** (SUSPICION
     comportementale, tunable). Vérifié sur vrais logs : remonte les connexions adminA
     de ~06h45 (avant 7h) — visible sans être alarmant.
+
+16. **Échecs de login ciblant un compte du RÉFÉRENTIEL** (`comptes_cibles`) : le compte visé
+    existe (`admins_connus`/`utilisateurs_vpn_actifs`/`utilisateurs_locaux`, comparaison
+    insensible à la casse), sur `Admin login failed` OU `SSL VPN login fail` (`FAIL_LOGDESC`).
+    Le motif d'échec ne tranche PAS (`sslvpn_login_permission_denied` = même étiquette pour
+    compte inconnu et mot de passe erroné) : le discriminant est le **comportement de l'IP**
+    — a-t-elle aussi tenté des comptes inexistants ? ≥ `seuil_spray` (défaut 5) → **eleve**,
+    **critique** si ≥ `seuil_ip_distinctes` (défaut 2) IP de ce type visent le même compte ;
+    0 autre compte tenté → **info** « vraisemblablement l'utilisateur légitime ». Un événement
+    par (compte, IP) sur toute la période (pas de fenêtre : campagnes étalées sur des jours).
+    Variantes de casse listées dans le détail (indice d'énumération). SUSPICION.
+    Mesuré sur vrais logs (FW-HMBM-T1, 09/2026) : les 4 IP visant un compte VPN réel tentent
+    65 à 338 comptes inexistants chacune ; une IP d'utilisateur légitime en tente 1. La
+    séparation est totale — aucun réglage de seuil délicat.
 
 ## Comparaison (`compare.py`)
 - Agrégats par **jour** (défaut) ou **heure**.
@@ -224,6 +238,16 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
   (critique pour app-ctrl où `apprisk`/`scertcname` suivent `msg`).
 - Vérifié sur 806 064 lignes réelles : 0 anomalie, ~67k lignes/s.
 
+## `remip` -> `srcip` (repli, `normalize.fill_srcip`)
+Les logs `event/vpn` portent l'IP cliente dans **`remip`**, `srcip` reste vide. Sans repli,
+les IP d'attaque SSL-VPN sont invisibles du rattachement boîtier, de la déduplication, de la
+géo/ASN, des listes de réputation, du classement des sources externes et des acteurs — qui
+lisent tous `srcip`. `fill_srcip` recopie `remip` dans `srcip` **quand `srcip` est vide**,
+juste après `build_timestamp` (donc en amont de tous les consommateurs). `remip` est dans
+`ANALYSIS_COLS` pour cette raison. Aucune IP n'est inventée : sans `remip`, `srcip` reste vide.
+Vérifié : sur un export event/vpn réel (25 000 lignes), 0 événement détecté avant le repli,
+8 après — plus géo, réputation (FireHOL L1) et acteurs renseignés.
+
 ## Rattachement boîtier (point délicat)
 Les exports ne contiennent pas de `devname`. Boîtier déduit par **IP** (WAN/mgmt).
 Pour les logs sans IP du boîtier (event/user, event/vpn, traffic/forward), un
@@ -271,6 +295,14 @@ externe » ne s'applique qu'aux accès **admin**.
 - Échelle : 118 Mo / 287 133 événements en 73 s, pic 1,05 Go RAM.
 - **Validation config** : config invalide → message explicite + arrêt (exit 1) ;
   config valide → RAS. Vérifie CIDR, IP, regex, seuils, clés requises.
+
+## Couverture des comptes du référentiel (`actors.build_couverture`)
+Table PUREMENT DESCRIPTIVE (aucune sévérité — c'est R16 qui alerte) : pour chaque compte
+connu, volume d'échecs de login le visant, nb d'IP distinctes, variantes de casse vues.
+Stockée dans `meta["couverture_comptes"]`, rendue en section 3quater de la synthèse
+(pas de feuille Excel dédiée). Garde-fou de libellé : un compte à 0 échec est « pas encore
+ciblé », **jamais** « protégé ». La synthèse rappelle que des identifiants devinables
+(prénom, prénom.nom) exposent les autres comptes — [À CONFIRMER hors logs].
 
 ## Limites connues (documentées, à ne pas masquer)
 - **Mémoire (P5 phase 1+2 faite)** : parsing colonnaire + frame d'analyse restreint à

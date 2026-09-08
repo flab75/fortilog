@@ -41,7 +41,7 @@ TARGET_COLS = ["date", "time", "tz", "eventtime", "logid", "type", "subtype",
 # Le frame d'analyse ne garde que celles-ci : une colonne objet coûte ~8 o/cellule
 # rien qu'en pointeurs, donc en RETIRER est le plus gros levier mémoire.
 ANALYSIS_COLS = ["date", "time", "eventtime", "logid", "type", "subtype", "logdesc",
-                 "user", "ui", "srcip", "dstip", "action", "status", "reason", "group",
+                 "user", "ui", "srcip", "remip", "dstip", "action", "status", "reason", "group",
                  "cfgpath", "cfgobj", "app", "appcat", "apprisk", "hostname",
                  "auditscore", "criticalcount", "highcount", "mediumcount",
                  "lowcount", "passedcount", "auditreporttype"]

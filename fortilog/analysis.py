@@ -283,6 +283,29 @@ def build_analysis(tables, meta, cfg) -> str:
             L.append(line + (f" — {detail}" if detail else "") + ".")
         L.append("")
 
+    # 3quater. Couverture des comptes du référentiel (descriptif) — quels comptes
+    # QUI EXISTENT sont visés par des échecs de login, et lesquels ne le sont pas encore.
+    cov = meta.get("couverture_comptes") or []
+    vises = [r for r in cov if r.get("n_echecs")]
+    if cov:
+        h("## 3quater. Comptes du référentiel visés par des échecs de login (descriptif)")
+        if vises:
+            L.append(f"- [AVÉRÉ] {len(vises)} compte(s) du référentiel sur {len(cov)} "
+                     "apparaissent dans des échecs de login.")
+            for r in vises[:max_constats]:
+                L.append(f"  - **{r['compte']}** : {r['n_echecs']} échec(s), "
+                         f"{r['n_ip']} IP distincte(s) — variantes du nom vues : {r['variantes']}.")
+            if len(vises) > max_constats:
+                L.append(f"  - … et {len(vises) - max_constats} autre(s).")
+            L.append("- Les autres comptes du référentiel ne sont **pas encore** visés — "
+                     "ce n'est pas une garantie de protection. Si les identifiants suivent "
+                     "un schéma devinable (prénom, prénom.nom), ils sont exposés au même titre "
+                     "[À CONFIRMER hors logs].")
+        else:
+            L.append("- Aucun compte du référentiel n'apparaît dans les échecs de login "
+                     "(les tentatives observées portent sur des noms inexistants).")
+        L.append("")
+
     # 4. Origine des accès externes
     h("## 4. Origine des accès externes (géo / threat intel)")
     if se is not None and not se.empty:

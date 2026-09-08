@@ -126,6 +126,9 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     del parts  # libère les frames par fichier (évite le doublement transitoire au concat)
 
     full["timestamp"] = normalize.build_timestamp(full)
+    # Avant tout le reste : les logs event/vpn portent l'IP cliente dans `remip`
+    # (srcip vide) — sans ce repli, les IP d'attaque SSL-VPN sont invisibles partout.
+    full["srcip"] = normalize.fill_srcip(full)
     full["boitier"] = normalize.assign_boitier(full, cfg.get("boitiers", {}), cfg.get("fichiers_boitier"))
     full = normalize.deduplicate(full)
 
@@ -232,6 +235,8 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     # Acteurs à risque : sur les événements ENRICHIS (géo/réputation), avant slim.
     tables["acteurs"] = actors.build_actors(events, full, meta, cfg)
     tables["utm_descriptifs"] = utm_stats.build_utm_descriptifs(full, files, cfg)
+    # Couverture des comptes du référentiel (descriptif, pas de feuille dédiée)
+    meta["couverture_comptes"] = actors.build_couverture(full, cfg).to_dict("records")
 
     return _emit(out, tables, meta, cfg, etat_path, quiet)
 

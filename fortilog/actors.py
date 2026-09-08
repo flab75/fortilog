@@ -19,7 +19,7 @@
 from __future__ import annotations
 import pandas as pd
 
-from .common import SEV_ORDER, str_col
+from .common import SEV_ORDER, FAIL_LOGDESC, str_col
 from .geo import _infra_ips, _nets, classify_scope, EXTERNE
 
 SCORE_COL = "score_priorisation (tri, pas un verdict)"
@@ -36,10 +36,10 @@ TIMELINE_COLS = ["timestamp", "boitier", "severite", "regle", "acteur", "detail"
 
 
 def _fails_by(full, col: str) -> dict:
-    """Volume d'échecs de login admin par valeur de `col` dans les données complètes."""
+    """Volume d'échecs de login (admin ET portail SSL-VPN) par valeur de `col`."""
     if full is None or full.empty or col not in full.columns:
         return {}
-    m = str_col(full, "logdesc").eq("Admin login failed")
+    m = str_col(full, "logdesc").isin(FAIL_LOGDESC)
     if not m.any():
         return {}
     return str_col(full, col)[m].value_counts().to_dict()
@@ -168,3 +168,33 @@ def build_timeline(events, cfg) -> pd.DataFrame:
         else:
             rows.extend(r for _, r in grp.iterrows())
     return pd.DataFrame(rows, columns=TIMELINE_COLS).reset_index(drop=True)
+
+
+def build_couverture(full, cfg) -> pd.DataFrame:
+    """Descriptif : quels comptes du référentiel sont visés par des échecs de login.
+
+    Volume d'échecs et nombre d'IP distinctes par compte connu (comparaison insensible
+    à la casse : les campagnes essaient `nathalie`, `Nathalie`, `NATHALIE`). PUREMENT
+    DESCRIPTIF, aucune sévérité — c'est R16 qui alerte. Un compte à 0 échec n'est pas
+    « protégé », il n'est simplement pas encore visé : la colonne s'appelle `cible`,
+    pas `vulnerable`.
+    """
+    from .common import FAIL_LOGDESC
+    connus = sorted(set(cfg.get("admins_connus", []))
+                    | set(cfg.get("utilisateurs_vpn_actifs", []))
+                    | set(sum(cfg.get("utilisateurs_locaux", {}).values(), [])))
+    if not connus or full is None or full.empty:
+        return pd.DataFrame(columns=["compte", "n_echecs", "n_ip", "variantes", "cible"])
+    ld = str_col(full, "logdesc")
+    u_low = str_col(full, "user").str.lower()
+    fail = ld.isin(FAIL_LOGDESC) & u_low.ne("")
+    sub = pd.DataFrame({"u": u_low[fail], "raw": str_col(full, "user")[fail],
+                        "ip": str_col(full, "srcip")[fail]})
+    rows = []
+    for c in connus:
+        g = sub[sub["u"] == c.lower()]
+        rows.append({"compte": c, "n_echecs": len(g),
+                     "n_ip": int(g["ip"].nunique()),
+                     "variantes": ", ".join(sorted(pd.unique(g["raw"]))),
+                     "cible": "oui" if len(g) else "non"})
+    return pd.DataFrame(rows).sort_values("n_echecs", ascending=False, ignore_index=True)
