@@ -327,6 +327,20 @@ def build_analysis(tables, meta, cfg) -> str:
         L.append("- Pas d'enrichissement disponible (ni sources externes, ni listes de réputation).")
     if not meta.get("geo_available", False):
         L.append("- Détection *impossible travel* (comptes admin) indisponible : pas de base géo locale.")
+    attendus = [str(c).upper() for c in (cfg.get("pays_attendus") or [])]
+    if attendus and meta.get("geo_available", False) and events is not None:
+        hors = events[events["regle"].str.contains("hors des pays attendus", na=False)] \
+            if "regle" in events.columns else events.iloc[0:0]
+        pays_txt = ", ".join(attendus)
+        if hors.empty:
+            L.append(f"- [AVÉRÉ] **Aucun accès réussi depuis un pays hors de {pays_txt}** sur la "
+                     "période : argument fort **contre** une compromission de compte (un attaquant "
+                     "distant aurait ouvert une session depuis ailleurs). Réserve : un VPN "
+                     "commercial ou un relais dans le pays attendu resterait invisible.")
+        else:
+            L.append(f"- [À CONFIRMER] {len(hors)} accès réussi(s) depuis un pays hors de "
+                     f"{pays_txt} — à recouper avec les congés et VPN personnels des utilisateurs "
+                     "(la géo est du contexte, ni preuve ni absolution).")
     L.append("")
 
     # 5. Lecture d'ensemble

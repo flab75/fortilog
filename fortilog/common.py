@@ -35,6 +35,7 @@ MITRE_MAP = {
     "Succès admin après rafale d'échecs (interne — SUSPICION)": "T1110 — Brute Force",
     "Rafale d'échecs sur comptes inexistants — name_invalid (SUSPICION)": "T1110 — Brute Force",
     "Échecs de login ciblant un compte du référentiel (SUSPICION)": "T1110 — Brute Force",
+    "Accès réussi hors des pays attendus (SUSPICION)": "T1078 — Valid Accounts",
     # R3 — accès distant externe
     "Tunnel SSL-VPN établi hors référentiel": "T1133 — External Remote Services",
     # R4 / R5 — création/modification de comptes

@@ -185,7 +185,7 @@ def validate_config(cfg: dict) -> list[str]:
         else:
             if cc.get("actif") is not None and not isinstance(cc.get("actif"), bool):
                 errors.append(f"comptes_cibles.actif : attendu un booléen, reçu {cc.get('actif')!r}")
-            for k in ("seuil_spray", "seuil_ip_distinctes"):
+            for k in ("seuil_spray", "seuil_ip_distinctes", "seuil_ip_campagne"):
                 v = cc.get(k)
                 if v is not None:
                     try:
@@ -193,6 +193,17 @@ def validate_config(cfg: dict) -> list[str]:
                             errors.append(f"comptes_cibles.{k} : doit être > 0, reçu {v}")
                     except (ValueError, TypeError):
                         errors.append(f"comptes_cibles.{k} : '{v}' n'est pas un entier valide")
+
+    # Pays attendus (R17, clé optionnelle) : liste de codes ISO2
+    pa = cfg.get("pays_attendus")
+    if pa is not None:
+        if not isinstance(pa, list):
+            errors.append(f"pays_attendus : attendu une liste, reçu {type(pa).__name__}")
+        else:
+            for i, c in enumerate(pa):
+                if not isinstance(c, str) or len(c) != 2 or not c.isalpha():
+                    errors.append(f"pays_attendus[{i}] : attendu un code pays ISO2 "
+                                  f"(ex. FR), reçu {c!r}")
 
     # Horaires ouvrés (R12, section optionnelle) : debut/fin entiers 0-23, debut < fin
     ho = cfg.get("horaires_ouvres")

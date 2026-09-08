@@ -129,7 +129,7 @@ sévérité ≥ `timeline.severite_min` (défaut `eleve`) : rafales consécutive
 (règle, acteur) dans la même heure regroupées en « × N similaires de HH:MM à HH:MM »
 au-delà de `timeline.max_par_groupe` (défaut 3) — le compte exact est toujours conservé.
 
-## Détection (grille d'audit, 15 règles)
+## Détection (grille d'audit, 17 règles)
 - Login admin réussi depuis source **externe** (critique) / compte hors référentiel (élevé).
 - Brute-force sur **compte valide** (`passwd_invalid`, élevé) vs compte inexistant.
 - Tunnel **SSL-VPN** établi hors référentiel (critique).
@@ -170,6 +170,15 @@ au-delà de `timeline.max_par_groupe` (défaut 3) — le compte exact est toujou
     ce type visent le même compte (campagne coordonnée) ;
   - aucune autre tentative depuis cette IP → **info**, libellé « vraisemblablement
     l'utilisateur légitime » (un salarié qui se trompe de mot de passe n'essaie qu'un compte).
+
+- **Accès réussi hors des pays attendus** (R17) : une connexion **aboutie** (login admin ou
+  tunnel SSL-VPN monté) depuis un pays absent de `pays_attendus` (config.yaml, codes ISO2,
+  liste vide = règle inactive) → **faible** (SUSPICION). Congés, VPN personnel et opérateur
+  mobile déplacent légitimement un utilisateur : l'alerte est volontairement basse. L'intérêt
+  principal est **l'inverse** — quand aucun accès réussi ne sort des pays attendus, la synthèse
+  le dit comme argument fort *contre* une compromission. Nécessite une base géo
+  (`geo_db_path`) ; sans base, la règle est silencieusement absente (aucun pays inventé).
+  Les IP internes et les pays inconnus de la base ne sont jamais signalés.
 
   Un événement par **(compte, IP)** sur toute la période analysée — pas de fenêtre glissante :
   ces campagnes s'étalent sur plusieurs jours à quelques essais par jour. Les variantes de

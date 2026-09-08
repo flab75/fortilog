@@ -296,6 +296,13 @@ externe » ne s'applique qu'aux accès **admin**.
 - **Validation config** : config invalide → message explicite + arrêt (exit 1) ;
   config valide → RAS. Vérifie CIDR, IP, regex, seuils, clés requises.
 
+## Pays attendus (R17, `pays_attendus` dans config.yaml)
+Accès RÉUSSI (login admin OK / `SSL VPN tunnel up`) depuis un pays hors liste → `faible`
+(SUSPICION) ; liste vide/absente = règle inactive, sans base géo la règle est silencieuse.
+Valeur : la synthèse (§4) conclut « aucun accès réussi hors de FR — argument fort contre une
+compromission », avec la réserve d'un relais dans le pays attendu. Vérifié sur les vrais logs
+VPN du 08/09 : 23 tunnels montés depuis des IP FR, 8 depuis des IP internes, **0 hors FR**.
+
 ## Couverture des comptes du référentiel (`actors.build_couverture`)
 Table PUREMENT DESCRIPTIVE (aucune sévérité — c'est R16 qui alerte) : pour chaque compte
 connu, volume d'échecs de login le visant, nb d'IP distinctes, variantes de casse vues.

@@ -68,6 +68,15 @@ comptes_cibles:
   actif: true
   seuil_spray: 5          # comptes hors référentiel tentés par la même IP -> attaque ciblée
   seuil_ip_distinctes: 2  # nb d'IP d'attaque visant le même compte -> critique
+  seuil_ip_campagne: 3    # IP ne tentant QUE ce compte : campagne distribuée (moyen)
+                          # au-delà de ce nb d'IP distinctes sur le compte
+
+# R17 — pays attendus des accès RÉUSSIS (codes ISO2, liste vide = règle inactive).
+# Un accès abouti hors de cette liste -> `faible` (SUSPICION) : congés, VPN personnel et
+# opérateur mobile déplacent légitimement un utilisateur. L'intérêt principal est l'inverse :
+# aucun accès réussi hors liste = argument fort contre une compromission (dit en synthèse).
+# Nécessite une base géo (`geo_db_path`) ; sans base, la règle est silencieusement absente.
+pays_attendus: [FR]
 
 # R12 — horaires inhabituels : login admin RÉUSSI hors plage ouvrée -> SUSPICION
 # comportementale (faible). Ajuster `debut`/`fin` au rythme réel de l'organisation.

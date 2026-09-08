@@ -502,3 +502,41 @@ def test_r16_mitre(cfg):
     ev = detect_on_fixture("compte_cible_spray.log", cfg)
     r16 = ev[ev["regle"].str.startswith("Échecs de login ciblant")]
     assert (r16["mitre"] == "T1110 — Brute Force").all()
+
+
+def test_r16_campagne_distribuee_une_tentative_par_ip(cfg):
+    """4 IP, une seule tentative chacune, toujours le même compte existant : ce n'est
+    pas l'utilisateur légitime (cas réel : compte VPN visé par 18 IP dont 8 « solo »)."""
+    ev = detect_on_fixture("compte_cible_distribue.log", cfg)
+    r16 = ev[ev["regle"].str.startswith("Échecs de login ciblant")]
+    assert len(r16) == 4
+    assert set(r16["severite"]) == {"moyen"}
+    assert r16["detail"].str.contains("campagne distribuée").all()
+    assert r16["detail"].str.contains("4 IP distinctes le visent").all()
+    assert ev[ev["regle"].str.startswith("Échecs sur compte existant")].empty
+
+
+# --- R17 : accès réussi hors des pays attendus ---
+
+def test_r17_acces_hors_pays_attendus(cfg):
+    """Login admin réussi depuis les US alors que pays_attendus=[FR] -> faible (SUSPICION)."""
+    cfg["pays_attendus"] = ["FR"]
+    ev = _detect_comportement(cfg, enricher=_FakePaysEnricher())
+    r17 = _regle(ev, "hors des pays attendus")
+    assert not r17.empty
+    assert (r17["severite"] == "faible").all()
+    assert (r17["srcip"] == "198.51.100.20").all()   # les IP FR ne sont pas signalées
+    assert "pays=US" in r17["detail"].iloc[0]
+
+
+def test_r17_sans_base_geo_silencieux(cfg):
+    """Sans base géo, la règle est silencieusement absente (jamais de pays inventé)."""
+    cfg["pays_attendus"] = ["FR"]
+    assert _regle(_detect_comportement(cfg, enricher=None), "hors des pays attendus").empty
+
+
+def test_r17_desactivable(cfg):
+    """pays_attendus absent ou vide -> règle inactive (rétro-compatible)."""
+    cfg["pays_attendus"] = []
+    assert _regle(_detect_comportement(cfg, enricher=_FakePaysEnricher()),
+                  "hors des pays attendus").empty
