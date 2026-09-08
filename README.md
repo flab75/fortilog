@@ -70,7 +70,8 @@ streamlit run app.py
 ```
 Ouvre un navigateur : déposez vos fichiers `.log`, choisissez un `config.yaml`
 optionnel, cliquez **Lancer l'analyse**. Les résultats s'affichent en onglets
-(événements signalés colorés, tableau de bord, rafales, différentiels) et le
+(événements signalés colorés, sessions VPN, tableau de bord, rafales,
+différentiels, guide des logs) et le
 rapport `.xlsx` est téléchargeable directement. L'onglet « Événements signalés »
 propose des filtres (sévérité, boîtier, règle, plage de dates) et un bouton pour
 télécharger la sélection filtrée en CSV.
@@ -97,32 +98,38 @@ fortilog --input ./logs --config config.yaml --output ./rapport
 > Sans installation (`pip install`), les commandes `python -m fortilog.main`,
 > `python -m fortilog.confdiff`, `python -m fortilog.confgen` et `python -m fortilog.ack` fonctionnent aussi.
 
-## Sorties (classeur, 14 feuilles)
+## Sorties (classeur, 16 feuilles)
 0. `Rapport` — **synthèse** qui décrit les résultats et explique les problèmes, en distinguant
    **[AVÉRÉ]** (état de config, volumes) de **[À CONFIRMER]** (suspicions). Chaque section
    (config, events, IP externes) détaille les constats les plus sévères individuellement
    (réglable via `rapport.max_constats`, défaut 5). Aussi en tête du rapport texte et dans
    l'onglet « Rapport » de l'UI Streamlit.
 1. `Tableau de bord` — agrégats par boîtier/jour (échecs, logins OK, lockouts, SSL-VPN, passwd_invalid, IP uniques).
-2. `UTM descriptif` — top signatures/attaques, domaines/catégories, verdicts pour
+2. `Sessions VPN` — **une ligne = un tunnel** : début/fin, durée, motif de clôture,
+   volumes, IP source + géo/réputation, et une colonne `legitimite` descriptive
+   (voir « Encart Sessions VPN » ci-dessous).
+3. `UTM descriptif` — top signatures/attaques, domaines/catégories, verdicts pour
    `utm/ips`/`utm/webfilter`/`utm/dns`/`utm/antivirus` — **descriptif, sans règle
    d'alerte** (voir « Agrégats descriptifs UTM » ci-dessous).
-3. `Evenements signales` — événements à risque, colorés par sévérité (info→critique), enrichis portée/pays/ASN/réputation.
-4. `Acteurs a risque` — IP externes et comptes agrégés depuis les événements, triés par un
+4. `Evenements signales` — événements à risque, colorés par sévérité (info→critique), enrichis portée/pays/ASN/réputation.
+5. `Acteurs a risque` — IP externes et comptes agrégés depuis les événements, triés par un
    **score de priorisation transparent** : `score = 100×n_critique + 30×n_eleve + 10×n_moyen
    + 3×n_faible + 50×(réputation non vide) + 20×(nb règles distinctes − 1)` (pondérations :
    `acteurs.poids`, plafond `acteurs.max_lignes` défaut 100). Le score sert à **trier** les
    entités à investiguer, **jamais à conclure**. IP d'infrastructure connue (WAN/mgmt,
    peers/DNS) exclues.
-5. `Chaines suspectes` — séquences corrélées (accès→compte→exfiltration) — **à confirmer**.
-6. `IP malveillantes` — sources présentes dans une liste de réputation (threat intel) — **à confirmer**.
-7. `Audit config` — constats sur les `.conf` FortiGate importés (comptes, accès, automation) — **à confirmer**.
-8. `Comparaison config` — écarts (ajout/suppr/modif) vs une config de référence + attribution qui/quand — **à confirmer**.
-9. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
-10. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
-11. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
-12. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
-13. `Referentiel` — la configuration du « normal » utilisée.
+6. `Chaines suspectes` — séquences corrélées (accès→compte→exfiltration) — **à confirmer**.
+7. `IP malveillantes` — sources présentes dans une liste de réputation (threat intel) — **à confirmer**.
+8. `Audit config` — constats sur les `.conf` FortiGate importés (comptes, accès, automation) — **à confirmer**.
+9. `Comparaison config` — écarts (ajout/suppr/modif) vs une config de référence + attribution qui/quand — **à confirmer**.
+10. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
+11. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
+12. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
+13. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
+14. `Referentiel` — la configuration du « normal » utilisée.
+15. `Guide des logs` — à quoi sert chaque fichier de log FortiCloud, ce que l'outil en fait,
+   lesquels sont indispensables et lesquels ne servent à rien pour cette analyse
+   (voir « Guide des fichiers de log » ci-dessous).
 
 Le rapport de synthèse comporte aussi une **frise chronologique** des événements de
 sévérité ≥ `timeline.severite_min` (défaut `eleve`) : rafales consécutives de même
@@ -192,6 +199,45 @@ au-delà de `timeline.max_par_groupe` (défaut 3) — le compte exact est toujou
 Chaque événement porte une colonne `mitre` (technique MITRE ATT&CK associée à la règle,
 ex. `T1110 — Brute Force`). Ce mapping est **indicatif** (aide au reporting), jamais une
 attribution.
+
+## Encart Sessions VPN (`vpn.py`)
+
+Vue dédiée aux accès distants, **utilisable seule** : il suffit de déposer les fichiers
+`*-event-vpn-*.log` (rien d'autre n'est requis) pour obtenir l'encart complet ; avec la
+totalité des logs, l'encart s'ajoute à l'analyse habituelle.
+
+- **Une ligne = un tunnel.** Appariement `SSL VPN tunnel up` / `tunnel down` par
+  `(boîtier, user, tunnelid)`. `statut` : `fermée`, `ouverte en fin de période`
+  (montée, jamais refermée dans les logs fournis) ou `montée avant la période analysée`
+  (un `down` sans `up` — la session existait avant le début de l'export). Aucune durée
+  n'est inventée pour les tunnels non appariés.
+- **Motif de clôture** lu tel quel dans le champ `reason` du `tunnel down` (observé sur
+  données réelles : `User requested termination of service`, `Lost the connection`,
+  `auth timeout`).
+- **Volumes et durée** = maximum vu sur les lignes du tunnel (`SSL VPN statistics` porte
+  les compteurs vivants ; en mode ssl-web le `tunnel down` les remet à zéro).
+- **Colonne `legitimite`** : cumul des écarts au référentiel (compte hors
+  `utilisateurs_vpn_actifs`, groupe hors `groupes_vpn_legitimes`, pays hors
+  `pays_attendus`, IP en liste de réputation, compte sans `two-factor` d'après le `.conf`).
+  Sinon « aucun écart au référentiel (à confirmer) ». **Descriptif, aucune sévérité** :
+  un écart n'est pas une compromission.
+- **Bruit TLS compté à part** : les lignes `user="N/A"` (`SSL VPN alert`,
+  `SSL VPN new connection`, `SSL VPN exit error`) ne sont pas des sessions ; leur volume
+  est rappelé séparément, comme celui des `SSL VPN login fail`.
+- **Sorties** : feuille « Sessions VPN », onglet Streamlit « 🔐 Sessions VPN » (métriques,
+  motifs, export CSV), section « SESSIONS VPN » du rapport texte et §3quinquies de la synthèse.
+- Les colonnes techniques nécessaires (`tunnelid`, `duration`, `sentbyte`, `rcvdbyte`,
+  `tunnelip`, `tunneltype` — `ingest.VPN_COLS`) sont chargées **uniquement** pour les
+  fichiers `event/vpn`, pour ne pas alourdir le reste de l'analyse.
+
+## Guide des fichiers de log (`logguide.py`)
+
+Catalogue statique : pour chaque type/sous-type FortiCloud, ce que le fichier contient,
+ce que l'outil en fait, et son utilité réelle (`INDISPENSABLE`, `Utile`, `Accessoire`,
+`Optionnel et LOURD`, `Descriptif seulement`), avec la mention « présent / non déposé »
+pour l'analyse courante. Sorties : feuille « Guide des logs », onglet Streamlit
+« 📖 Guide des logs », section du rapport texte. « Inutile » signifie **sans effet sur
+cette analyse**, pas « à supprimer de FortiCloud ».
 
 ## Types de logs UTM
 - `utm/app-ctrl` : analysé par les règles R10.
@@ -355,7 +401,7 @@ JSON lisible et éditable.
 
 ## Tests
 
-Suite pytest versionnée : **173 tests rapides** + **9 tests sur vrais logs** (@slow) = **182 au total**.
+Suite pytest versionnée : **266 tests rapides** + **10 tests sur vrais logs** (@slow) = **276 au total**.
 
 ```bash
 # Tests rapides (fixtures synthétiques)

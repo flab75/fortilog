@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Rapport texte synthétique. Rappelle les limites assumées."""
 from __future__ import annotations
+import pandas as pd
+
+from . import logguide
 from .ingest import UTM_NO_RULES
 
 LIMITES = """\
@@ -74,6 +77,31 @@ def build_report(tables, meta) -> str:
                      f"{r['echecs_login']} échecs, {r['logins_ok']} logins OK, "
                      f"{r['lockouts']} lockouts, {r['sslvpn_fails']} SSL-VPN fails, "
                      f"{r['pwd_invalid']} passwd_invalid, {r['ip_sources_uniques']} IP src")
+        L.append("")
+    vs = tables.get("vpn_sessions")
+    st_ = meta.get("vpn_stats") or {}
+    if vs is not None and not vs.empty:
+        L.append(f"SESSIONS VPN : {st_.get('n_sessions', len(vs))} tunnel(s) "
+                 f"pour {st_.get('n_users', 0)} compte(s)")
+        if st_.get("motifs"):
+            L.append("  Motifs de clôture : "
+                     + ", ".join(f"{k} ({v})" for k, v in st_["motifs"].items()))
+        if st_.get("n_ouvertes"):
+            L.append(f"  {st_['n_ouvertes']} session(s) encore ouverte(s) en fin de période "
+                     "(durée non close : pas de tunnel down dans la fenêtre).")
+        if st_.get("n_orphelines"):
+            L.append(f"  {st_['n_orphelines']} session(s) montée(s) avant la période analysée.")
+        for _, r in vs.iterrows():
+            deb = str(r["debut"])[:16] if pd.notna(r["debut"]) else "?"
+            fin = str(r["fin"])[:16] if pd.notna(r["fin"]) else "—"
+            geo = f" {r['pays']}" if r.get("pays") else ""
+            L.append(f"    {deb} -> {fin} | {r['boitier']} | {r['user']} ({r['groupe']}) "
+                     f"| {r['srcip']}{geo} | {r['duree']} | {r['statut']}"
+                     + (f" : {r['motif_fin']}" if r["motif_fin"] else "")
+                     + f" | ↑{r['envoye_mo']} ↓{r['recu_mo']} Mo | {r['legitimite']}")
+        L.append(f"  (Hors sessions : {st_.get('n_login_fail', 0)} échec(s) de login SSL-VPN et "
+                 f"{st_.get('n_bruit_tls', 0)} ligne(s) de bruit TLS sans utilisateur — "
+                 "poignées de main de scanners, pas des connexions.)")
         L.append("")
     ud = tables.get("utm_descriptifs")
     if ud is not None and not ud.empty:
@@ -157,5 +185,7 @@ def build_report(tables, meta) -> str:
             L.append(f"  [{ts_str}] {rtype} score={score} critical={c_crit} high={c_high}")
         L.append("  (Security Rating = audit de durcissement, pas une détection de compromission)")
         L.append("")
+    L.append(logguide.guide_markdown(meta.get("files")).replace("**", "").replace("# ", ""))
+    L.append("")
     L.append(LIMITES)
     return "\n".join(L)

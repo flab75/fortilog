@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats
+from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats, vpn, logguide
 from .common import SEV_ORDER, FAIL_LOGDESC, str_col
 from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
 from .validate import validate_config
@@ -103,6 +103,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
                   "utm_descriptifs": empty,
                   "sources_externes": empty, "reputation": empty,
                   "config_audit": config_audit, "config_diff": config_diff,
+                  "vpn_sessions": empty, "log_guide": logguide.build_guide([]),
                   "ref": pd.DataFrame(ref_rows)}
         meta = {"n_files": 0, "n_rows": 0, "dedup": 0,
                 "files": [{"name": p.name, "type": "config", "subtype": "fortigate",
@@ -116,7 +117,8 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     n_files = len(files)
     for i, f in enumerate(files, start=1):
         t, s, reconnu = ingest.detect_type(f)
-        df = load_file(f, columns=ingest.ANALYSIS_COLS)  # colonnes d'affichage relues en 2ᵉ passe
+        cols = ingest.ANALYSIS_COLS + (ingest.VPN_COLS if (t, s) == ("event", "vpn") else [])
+        df = load_file(f, columns=cols)  # colonnes d'affichage relues en 2ᵉ passe
         df["type"] = df["type"].replace("", t)
         df["subtype"] = df["subtype"].replace("", s)
         meta_files.append({"name": f.name, "type": t, "subtype": s,
@@ -126,6 +128,9 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
             print(f"fichier {i}/{n_files} : {f.name} ({len(df)} lignes)", file=sys.stderr)
     full = pd.concat(parts, ignore_index=True)
     del parts  # libère les frames par fichier (évite le doublement transitoire au concat)
+
+    for c in ingest.VPN_COLS:  # absentes des fichiers non-VPN -> NaN au concat
+        full[c] = full[c].fillna("") if c in full.columns else ""
 
     full["timestamp"] = normalize.build_timestamp(full)
     # Avant tout le reste : les logs event/vpn portent l'IP cliente dans `remip`
@@ -158,6 +163,8 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     config_audit = confaudit.audit_files(conf_files, cfg, boitier_map=_boitier_for,
                                          comptes_vises=comptes_vises)
     comptes_conf = confaudit.local_users_map(conf_files)
+    # Encart VPN : une ligne = un tunnel (connexion, clôture, motif, légitimité).
+    vpn_sessions, vpn_stats = vpn.build_sessions(full, cfg, comptes_conf, enricher, repdb)
     comportement_vus_courant = events.attrs.get("comportement_vus_courant", {})
     chains = correlate.correlate_chains(events, cfg)
 
@@ -231,6 +238,8 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
         "reputation": reputation,
         "config_audit": config_audit,
         "config_diff": config_diff,
+        "vpn_sessions": vpn_sessions,
+        "log_guide": logguide.build_guide(meta_files),
         "ref": pd.DataFrame(ref_rows),
     }
     meta = {"n_files": len(files), "n_rows": len(full),
@@ -239,7 +248,8 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
             "reputation_available": repdb.available,
             "n_configs": len(conf_files), "n_config_changes": len(config_diff),
             "config_ref": Path(ref_conf).name if ref_conf else None,
-            "comportement_vus_courant": comportement_vus_courant}
+            "comportement_vus_courant": comportement_vus_courant,
+            "vpn_stats": vpn_stats}
 
     # Acteurs à risque : sur les événements ENRICHIS (géo/réputation), avant slim.
     tables["acteurs"] = actors.build_actors(events, full, meta, cfg)

@@ -37,9 +37,11 @@ fortilog/
 │   ├── confdiff.py  # comparaison 2 .conf (ajout/suppr/modif) + attribution qui/quand via logs ; CLI
 │   ├── confgen.py   # génère un config.yaml (BROUILLON) depuis des .conf (référentiel dérivé) ; CLI
 │   ├── fetch_fortinet_ranges.py # GÉNÉRATION (réseau) : plages IP Fortinet via ARIN -> .netset ; CLI
+│   ├── vpn.py       # build_sessions : encart VPN (1 ligne = 1 tunnel, motif de clôture, légitimité)
+│   ├── logguide.py  # catalogue statique : à quoi sert chaque fichier de log (utile / inutile)
 │   ├── analysis.py  # build_analysis : rapport de SYNTHÈSE (décrit/explique, [AVÉRÉ]/[À CONFIRMER])
 │   ├── report.py    # build_report (texte détaillé) + rappel des limites
-│   ├── excel.py     # write_workbook (xlsxwriter, 12 feuilles, « Rapport » en 1re)
+│   ├── excel.py     # write_workbook (xlsxwriter, 16 feuilles, « Rapport » en 1re)
 │   ├── validate.py  # validate_config : vérifie le config.yaml au démarrage (CIDR, regex, seuils)
 │   ├── ui_helpers.py # prepare_events/metrics/agg/bursts/diff — helpers testables hors-UI
 │   └── main.py      # run(input, config, output) + CLI argparse
@@ -55,13 +57,15 @@ fortilog/
     ├── test_geo.py      # portée, lookup plages, enrichissement, dégradation, top sources
     ├── test_validate.py # validation config (valide + cas d'erreur)
     ├── test_ui_helpers.py   # 13 tests hors-UI (prepare_events, metrics, diff, badge…)
+    ├── test_vpn.py      # encart VPN : appariement des tunnels, volumes, bruit TLS, guide des logs
     └── test_integration.py # scénario compromission + bénin + vrais logs (@slow)
 ```
 
 ## Flux (`main.run`)
 **validate_config** → **audit .conf** (confaudit) → ingest → parse → concat → build_timestamp →
 assign_boitier → deduplicate → (catégorisation mémoire) → detect (R1-R12) → **correlate** →
-**enrichissement géo + réputation** → aggregate + bursts + diffs → report + excel.
+**enrichissement géo + réputation** → **sessions VPN** (vpn.build_sessions) → aggregate +
+bursts + diffs → report + excel.
 `run()` accepte logs ET/OU `.conf` ; **mode audit-config seul** si aucun log fourni
 (import de configs uniquement, p.ex. depuis l'UI Streamlit). `_emit()` calcule la
 **synthèse** (`analysis.build_analysis`), l'écrit en 1re feuille Excel « Rapport » +
@@ -279,7 +283,7 @@ externe » ne s'applique qu'aux accès **admin**.
 - **Inconnu** : tout autre type → parsing générique + marquage "(NON RECONNU)".
 
 ## État vérifié (tests réellement passés)
-- **Suite pytest : 160 tests rapides + 8 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
+- **Suite pytest : 266 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
 - **Comparaison config** vérifiée sur vrais .conf : 127 écarts T1↔T2 ; attribution réelle
   (ex. « adminB modifié par adminA le 2026-06-22 11:26 ») ; hashs masqués.
 - **Rapport de synthèse** vérifié sur vrai T1 : relie GUI exposée WAN ↔ 128 422 échecs de login
@@ -323,6 +327,43 @@ Stockée dans `meta["couverture_comptes"]`, rendue en section 3quater de la synt
 (pas de feuille Excel dédiée). Garde-fou de libellé : un compte à 0 échec est « pas encore
 ciblé », **jamais** « protégé ». La synthèse rappelle que des identifiants devinables
 (prénom, prénom.nom) exposent les autres comptes — [À CONFIRMER hors logs].
+
+## Encart Sessions VPN (`vpn.py`)
+`build_sessions(full, cfg, comptes_conf=None, enricher=None, repdb=None) -> (df, stats)`.
+**UNE LIGNE = UN TUNNEL** : appariement `SSL VPN tunnel up`/`tunnel down` par
+`(boitier, user, tunnelid)`. Utilisable **seul** : déposer les seuls `*-event-vpn-*.log`
+suffit (vérifié : encart complet sur vrais logs en 48 s, sans `.conf` → 2FA inconnue).
+- `statut` : `fermée` / `ouverte en fin de période` / `montée avant la période analysée`
+  (down sans up). Jamais de durée inventée pour un tunnel non apparié.
+- `motif_fin` = champ `reason` tel quel (réels : `User requested termination of service`,
+  `Lost the connection`, `auth timeout`).
+- Durée/volumes = **max** sur les lignes du tunnel (`SSL VPN statistics` porte les compteurs
+  vivants ; en ssl-web le `tunnel down` les remet à 0 — bug rencontré : `↑0.0 ↓0.0 Mo`).
+- `legitimite` : DESCRIPTIF, aucune sévérité. Cumule compte/groupe hors référentiel, pays hors
+  `pays_attendus`, IP en réputation, compte sans `two-factor` (lu dans le `.conf` via
+  `confaudit.local_users_map`) ; sinon « aucun écart au référentiel (à confirmer) ».
+- **Géo seulement si `portee == EXTERNE`**, et `ZZ`/vide jamais signalés comme pays inattendu
+  (bug rencontré : IP internes 10.10.x → « pays inattendu (ZZ) »).
+- Bruit TLS `user="N/A"` (`SSL VPN alert`, `SSL VPN new connection`, `SSL VPN exit error`) et
+  `SSL VPN login fail` comptés **à part** (`stats`), jamais transformés en sessions.
+- Colonnes techniques `ingest.VPN_COLS` (`tunnelid`, `duration`, `sentbyte`, `rcvdbyte`,
+  `tunnelip`, `tunneltype`) chargées **uniquement** pour les fichiers `event/vpn`.
+- Sorties : `tables["vpn_sessions"]` → feuille « Sessions VPN », onglet Streamlit
+  « 🔐 Sessions VPN » (+ CSV), section rapport, §3quinquies de la synthèse (écarts groupés
+  par `(user, legitimite)` pour ne pas répéter 9 lignes quasi identiques).
+- Vérifié sur vrais logs : 11 tunnels / 4 comptes, motifs `User requested termination (6),
+  Lost the connection (3), auth timeout (1)`, 1 session ouverte, 126 851 échecs et
+  152 240 lignes de bruit TLS comptés à part.
+
+## Guide des fichiers de log (`logguide.py`)
+Catalogue **statique** `LOG_GUIDE[(type, subtype)] = (contenu, ce que l'outil en fait, utilité)`
++ `NOTES` (préfixes `memory-`/`forticloud-` et leurs périodes réelles, `.conf` ≠ log, mode
+VPN seul). `build_guide(meta["files"])` marque chaque type « présent / non déposé » et ajoute
+les types inconnus rencontrés. Sorties : feuille « Guide des logs » (dernière), onglet
+Streamlit « 📖 Guide des logs », section du rapport texte.
+**Garde-fou de libellé** : « Inutile » = *sans effet sur CETTE analyse*, jamais
+« à désactiver dans FortiCloud ».
+
 
 ## Limites connues (documentées, à ne pas masquer)
 - **Mémoire (P5 phase 1+2 faite)** : parsing colonnaire + frame d'analyse restreint à

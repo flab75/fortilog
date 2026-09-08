@@ -316,6 +316,43 @@ def build_analysis(tables, meta, cfg) -> str:
                      "(les tentatives observées portent sur des noms inexistants).")
         L.append("")
 
+    # 3quinquies. Sessions VPN — descriptif + points à vérifier (jamais un verdict).
+    vs = tables.get("vpn_sessions")
+    vstats = meta.get("vpn_stats") or {}
+    if vs is not None and not vs.empty:
+        h("## 3quinquies. Sessions VPN (une ligne = un tunnel)")
+        L.append(f"- [AVÉRÉ] {vstats.get('n_sessions', len(vs))} tunnel(s) monté(s) par "
+                 f"{vstats.get('n_users', 0)} compte(s) sur la période.")
+        if vstats.get("motifs"):
+            L.append("- [AVÉRÉ] Motifs de clôture : "
+                     + ", ".join(f"**{k}** ({v})" for k, v in vstats["motifs"].items())
+                     + ". « User requested termination » = déconnexion volontaire, "
+                       "« Lost the connection » = coupure réseau côté client, "
+                       "« auth timeout » = expiration d'authentification — aucun de ces motifs "
+                       "n'est en soi le signe d'une compromission.")
+        if vstats.get("n_ouvertes"):
+            L.append(f"- {vstats['n_ouvertes']} session(s) sans `tunnel down` dans la fenêtre : "
+                     "encore ouverte(s) ou refermée(s) hors période — la durée n'est pas inventée.")
+        ecarts = vs[~vs["legitimite"].str.startswith("aucun écart")]
+        if ecarts.empty:
+            L.append("- [AVÉRÉ] Aucune session ne présente d'écart au référentiel "
+                     "(compte, groupe, pays, réputation) — argument en faveur d'un usage normal.")
+        else:
+            # Un même écart revient à chaque session du compte : on regroupe par
+            # (compte, écart) pour ne pas gonfler artificiellement la liste.
+            grp = (ecarts.groupby(["user", "legitimite"]).size()
+                   .sort_values(ascending=False))
+            L.append(f"- [À CONFIRMER] {len(ecarts)} session(s) présentent au moins un écart, "
+                     f"soit {len(grp)} cas distinct(s) :")
+            for (u, quoi), n in list(grp.items())[:max_constats]:
+                L.append(f"  - **{u}** ({n} session(s)) — {quoi}.")
+            if len(grp) > max_constats:
+                L.append(f"  - … et {len(grp) - max_constats} autre(s).")
+        L.append(f"- Hors sessions : {vstats.get('n_login_fail', 0)} échec(s) de login SSL-VPN et "
+                 f"{vstats.get('n_bruit_tls', 0)} ligne(s) de bruit TLS sans utilisateur "
+                 "(scanners) — comptés à part, ce ne sont pas des connexions.")
+        L.append("")
+
     # 4. Origine des accès externes
     h("## 4. Origine des accès externes (géo / threat intel)")
     if se is not None and not se.empty:
