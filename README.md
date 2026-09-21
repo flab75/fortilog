@@ -340,6 +340,15 @@ le CLI FortiGate et vérifie des **indices de compromission**, comparés au réf
   **moyen** sinon. Le détail indique la date du dernier changement de mot de passe.
 - **Portail SSL-VPN ouvert à toutes les IP sources** (`vpn ssl settings source-address all`) →
   moyen : c'est ce qui rend le portail atteignable par les campagnes de devinage de comptes.
+- **Règle `local-in-policy` sans `action` explicite** → moyen, « à vérifier sur le boîtier » :
+  FortiOS n'affiche pas toujours ce champ et la règle peut ne rien bloquer tant qu'un
+  `set action deny` explicite n'a pas été posé. L'outil ne tranche pas — si des drops
+  local-in figurent dans les logs (feuille « Blocages local-in »), la règle agit bel et bien.
+- **Drops local-in non journalisés** (`config log setting` : `local-in-deny-unicast` ≠
+  `enable`, ou absent) → faible : l'efficacité des blocages n'est alors **pas vérifiable**
+  depuis les logs. Signalé uniquement s'il existe au moins une `local-in-policy`.
+- **Règle `local-in-policy` inerte** : `srcaddr` pointant sur un objet inexistant, ou sur un
+  groupe d'adresses **vide** → moyen (la règle ne vise aucune IP).
 - **Restriction d'origine SSL-VPN en place mais contournée** (`source-address` ≠ `all`, et des
   IP figurent quand même dans les échecs `SSL VPN login fail` des logs) → moyen, SUSPICION.
   Un filtre large (groupe géographique p. ex.) « restreint » sans protéger. Visible seulement

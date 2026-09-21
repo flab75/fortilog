@@ -45,7 +45,8 @@ def _config_tag(regle) -> str:
     """[À CONFIRMER] pour les constats de SUSPICION (compte hors référentiel, nom voyou,
     SSO cloud inhabituel…) ; [AVÉRÉ] pour les états de configuration factuels."""
     s = str(regle)
-    if "SUSPICION" in s or "hors référentiel" in s or "voyou" in s:
+    # « à vérifier » = question ouverte (B1 : action local-in non explicite) — jamais AVÉRÉ.
+    if "SUSPICION" in s or "hors référentiel" in s or "voyou" in s or "à vérifier" in s:
         return "[À CONFIRMER]"
     return "[AVÉRÉ]"
 

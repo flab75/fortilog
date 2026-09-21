@@ -77,6 +77,24 @@ def _edit_children(block: Block) -> list[Block]:
     return [c for c in block.children if c.kind == "edit"]
 
 
+def _names(value: str) -> list[str]:
+    """Noms d'objets d'un `set srcaddr "A" "B"` (ou non quotés) -> ['A', 'B']."""
+    return [a or b for a, b in re.findall(r'"([^"]*)"|(\S+)', value.strip()) if (a or b)]
+
+
+def _address_objects(root: Block) -> dict[str, list[str] | None]:
+    """Objets adresse connus -> membres pour un GROUPE, None pour une adresse simple.
+    Sert à C12 : une règle dont le srcaddr n'existe pas / est un groupe vide est inerte."""
+    out: dict[str, list[str] | None] = {}
+    for header in ("firewall address", "firewall address6",
+                   "firewall addrgrp", "firewall addrgrp6"):
+        grp = header.startswith("firewall addrgrp")
+        for blk in find_blocks(root, header):
+            for obj in _edit_children(blk):
+                out[obj.name] = _names(obj.settings.get("member", "")) if grp else None
+    return out
+
+
 def parse_header_user(text: str) -> str:
     """Extrait `user=` de l'en-tête #config-version (qui a sauvegardé la config)."""
     m = re.search(r"#config-version=[^\n]*?:user=([^\s:]+)", text)
@@ -215,6 +233,50 @@ def audit_config(text: str, cfg: dict, source_file: str = "", boitier: str = "in
                              f"n'est pas résolu ici, et la DATE de mise en place de la "
                              f"restriction n'est pas dans le .conf (des échecs antérieurs "
                              f"peuvent être comptés) : à vérifier sur le boîtier.")
+
+    # --- C10 (B1) / C12 (B3) : les règles local-in-policy font-elles vraiment quelque chose ?
+    #     B1 : FortiOS n'affiche pas `action` dans `show` quand il n'a jamais été posé, et
+    #     une règle sans action explicite peut ne rien bloquer (constaté sur le terrain :
+    #     le blocage n'a pris effet qu'après un `set action deny`). On ne tranche PAS entre
+    #     « le défaut est accept » et « il fallait re-committer » : on signale à vérifier.
+    addrs = _address_objects(root)
+    policies = [p for blk in find_blocks(root, "firewall local-in-policy")
+                for p in _edit_children(blk)]
+    for pol in policies:
+        ident = f"local-in-policy {pol.name} (intf={pol.settings.get('intf', '?').strip(chr(34))}, " \
+                f"srcaddr={pol.settings.get('srcaddr', '?')})"
+        if "action" not in pol.settings:
+            add("Règle local-in-policy sans action explicite — à vérifier sur le boîtier",
+                "moyen", f"{ident} : aucun `set action` dans la config. FortiOS n'affiche pas "
+                         f"toujours ce champ ; la règle peut ne rien bloquer tant qu'un "
+                         f"`set action deny` explicite n'a pas été posé. À confirmer sur le "
+                         f"boîtier — si des drops local-in figurent dans les logs, la règle "
+                         f"agit bel et bien (cf. table « Blocages local-in »).")
+        for nom in _names(pol.settings.get("srcaddr", "")):
+            if nom in ("all", "none", "?"):
+                continue
+            if nom not in addrs:
+                add("Règle local-in-policy inerte : objet source inexistant", "moyen",
+                    f"{ident} : l'objet « {nom} » n'est défini nulle part dans cette config.")
+            elif addrs[nom] == []:
+                add("Règle local-in-policy inerte : groupe source vide", "moyen",
+                    f"{ident} : le groupe « {nom} » n'a aucun membre — la règle ne vise aucune IP.")
+
+    # --- C11 (B2) : les drops local-in sont-ils seulement journalisés ? ---
+    #     Sans cette option, aucun log de drop -> l'efficacité d'un blocage n'est PAS
+    #     vérifiable depuis les logs (cf. table « Blocages local-in »).
+    if policies:
+        logset = find_blocks(root, "log setting")
+        val = ""
+        for blk in logset:
+            val = blk.settings.get("local-in-deny-unicast", val).strip('"')
+        if val != "enable":
+            etat = f"local-in-deny-unicast={val}" if val else \
+                   "local-in-deny-unicast absent de `config log setting`"
+            add("Drops local-in non journalisés — efficacité des blocages non vérifiable",
+                "faible", f"{etat} : les paquets refusés par une local-in-policy ne produisent "
+                          f"aucun log. Les blocages existent peut-être et fonctionnent, mais "
+                          f"rien dans les logs ne permet de le confirmer.")
 
     # --- C6 : Config sauvegardée par un compte hors référentiel ---
     saver = parse_header_user(text)

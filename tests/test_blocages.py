@@ -78,3 +78,52 @@ def test_c8_inchange_sur_source_address_all():
     regles = _regles(CONF_ALL, {"81.1.1.1"})
     assert any("ouvert à toutes les IP" in r for r in regles)
     assert not any("contournée" in r for r in regles)
+
+
+# --- B1/B2/B3 : les règles local-in font-elles vraiment quelque chose ? ---
+
+def _conf(policy: str, extra: str = "") -> str:
+    return ("config firewall addrgrp\n"
+            '    edit "BLOCKLIST"\n        set member "BLK-1.2.3.4"\n    next\n'
+            '    edit "VIDE"\n    next\nend\n'
+            "config firewall address\n"
+            '    edit "BLK-1.2.3.4"\n        set subnet 1.2.3.4 255.255.255.255\n    next\nend\n'
+            "config firewall local-in-policy\n" + policy + "end\n" + extra)
+
+
+LOG_OK = "config log setting\n    set local-in-deny-unicast enable\nend\n"
+POL_OK = '    edit 1\n        set srcaddr "BLOCKLIST"\n        set action deny\n    next\n'
+
+
+def test_b1_policy_sans_action_explicite():
+    r = _regles(_conf('    edit 1\n        set srcaddr "BLOCKLIST"\n    next\n', LOG_OK))
+    assert any("sans action explicite" in x for x in r)
+
+
+def test_b1_policy_avec_action_deny_silencieux():
+    assert not any("sans action" in x for x in _regles(_conf(POL_OK, LOG_OK)))
+
+
+def test_b2_deny_unicast_desactive():
+    conf = _conf(POL_OK, "config log setting\n    set local-in-deny-unicast disable\nend\n")
+    assert any("non journalisés" in x for x in _regles(conf))
+
+
+def test_b2_silencieux_si_active_et_si_aucune_policy():
+    assert not any("non journalisés" in x for x in _regles(_conf(POL_OK, LOG_OK)))
+    # aucune local-in-policy -> rien à vérifier, pas de bruit
+    assert not any("non journalisés" in x for x in _regles("config log setting\nend\n"))
+
+
+def test_b3_groupe_vide_et_objet_inexistant():
+    r = _regles(_conf('    edit 1\n        set srcaddr "VIDE"\n        set action deny\n    next\n'
+                      '    edit 2\n        set srcaddr "FANTOME"\n        set action deny\n    next\n',
+                      LOG_OK))
+    assert any("groupe source vide" in x for x in r)
+    assert any("objet source inexistant" in x for x in r)
+
+
+def test_b3_srcaddr_all_et_groupe_peuple_silencieux():
+    r = _regles(_conf('    edit 1\n        set srcaddr "all"\n        set action deny\n    next\n'
+                      + POL_OK, LOG_OK))
+    assert not any("inerte" in x for x in r)

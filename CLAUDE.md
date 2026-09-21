@@ -603,7 +603,20 @@ alimenté par les IP en `SSL VPN login fail` passées via `audit_files(ips_vpn_e
 sans logs la règle est silencieuse). Vérifié sur les logs réels du 21/09 : « 195.58.140.130
 — 7 drops — bloquée depuis 13:31:47, aucun accès depuis » et C9 sur `source-address=GEO-FR`
 (1249 IP). ATTENTION mesurée sur vrais logs : `policytype="local-in-policy"` apparaît AUSSI
-sur du trafic accepté — seul `action="deny"` fait un drop. Reste ouvert : B, C, D, E.
+sur du trafic accepté — seul `action="deny"` fait un drop.
+**B1/B2/B3 — ✅ FAIT (2026-09-21)**, constats C10/C11/C12 de `confaudit.py` :
+**C10** (B1) `firewall local-in-policy` sans `set action` → `moyen`, libellé « à vérifier sur
+le boîtier » (on ne tranche PAS entre « le défaut est accept » et « il fallait re-committer ») ;
+le détail renvoie à la table « Blocages local-in » (des drops dans les logs = la règle agit).
+**C11** (B2) `log setting local-in-deny-unicast` ≠ `enable` (ou absent) → `faible` « drops non
+journalisés, efficacité non vérifiable » — émis SEULEMENT s'il existe au moins une
+local-in-policy (sinon rien à vérifier, pas de bruit). **C12** (B3) `srcaddr` pointant sur un
+objet inexistant ou un groupe vide → `moyen` « règle inerte ». Helpers `_names` /
+`_address_objects`. `analysis._config_tag` : un libellé « à vérifier » est désormais
+[À CONFIRMER], plus [AVÉRÉ] (une question ouverte n'est pas un fait).
+Vérifié sur les .conf réels du 21/09 : la conf 13:36 remonte C10 (règle `BLOCKLIST-VPN` sans
+`set action`), C11 et C12 silencieux (`local-in-deny-unicast=enable`, groupe à 2 membres) ;
+la conf 13:16 n'a aucune local-in-policy → aucun constat. Reste ouvert : C, D, E.
 **Contexte** : une demi-journée d'audit a porté sur une seule question — « est-ce que le
 blocage marche ? ». L'outil n'a aujourd'hui aucune notion d'**efficacité d'une
 contre-mesure**. Ordre de priorité : A1 → A2 → A3 → B → C → D → E.
