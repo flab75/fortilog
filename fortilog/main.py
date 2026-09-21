@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats, vpn, logguide, blocages
+from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats, vpn, logguide, blocages, blocklist
 from .common import SEV_ORDER, FAIL_LOGDESC, str_col
 from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
 from .validate import validate_config
@@ -101,6 +101,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
         tables = {"unifie": empty, "events": empty, "chains": empty, "agg": empty,
                   "bursts": empty, "diff": empty, "security_rating": empty, "acteurs": empty,
                   "utm_descriptifs": empty, "blocages_local_in": empty,
+                  "blocage_candidats": empty,
                   "sources_externes": empty, "reputation": empty,
                   "config_audit": config_audit, "config_diff": config_diff,
                   "vpn_sessions": empty, "log_guide": logguide.build_guide([]),
@@ -261,6 +262,9 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     tables["utm_descriptifs"] = utm_stats.build_utm_descriptifs(full, files, cfg)
     # Efficacité des contre-mesures local-in (descriptif, aucune sévérité)
     tables["blocages_local_in"] = blocages.build_blocages(full, cfg)
+    # Grappes d'IP candidates à un blocage + brouillon CLI (jamais appliqué par l'outil)
+    tables["blocage_candidats"] = blocklist.build_candidats(full, cfg, enricher, repdb)
+    meta["blocage_cli"] = blocklist.cli_brouillon(tables["blocage_candidats"], cfg)
     # Couverture des comptes du référentiel (descriptif, pas de feuille dédiée)
     meta["couverture_comptes"] = actors.build_couverture(full, cfg, comptes_conf).to_dict("records")
 

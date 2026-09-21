@@ -212,8 +212,10 @@ if _res:
     n_cdiff = 0 if config_diff_df is None else len(config_diff_df)
     vpn_df = tables.get("vpn_sessions")
     n_vpn = 0 if vpn_df is None else len(vpn_df)
+    bloc_df = tables.get("blocage_candidats")
+    n_bloc = 0 if bloc_df is None else len(bloc_df)
     (tab_report, tab_ev, tab_vpn, tab_actors, tab_chains, tab_conf, tab_cdiff,
-     tab_agg, tab_burst, tab_diff, tab_guide) = st.tabs([
+     tab_bloc, tab_agg, tab_burst, tab_diff, tab_guide) = st.tabs([
         "📝 Rapport",
         "🚨 Événements signalés",
         f"🔐 Sessions VPN ({n_vpn})",
@@ -221,6 +223,7 @@ if _res:
         f"🔗 Chaînes suspectes ({n_chains})",
         f"🛠 Audit config ({n_config})",
         f"🔁 Comparaison config ({n_cdiff})",
+        f"🚫 Grappes à bloquer ({n_bloc})",
         "📊 Tableau de bord",
         "⚡ Rafales",
         "🔄 Différentiels",
@@ -229,6 +232,28 @@ if _res:
 
     with tab_report:
         st.markdown(meta.get("analysis", "_Rapport indisponible._"))
+
+    with tab_bloc:
+        st.caption("Liste de TRAVAIL : l'outil ne bloque rien et ne décide rien. "
+                   "Retenues ici : IP externes, hors infrastructure connue, ayant tenté "
+                   "plusieurs comptes inexistants et n'ayant **jamais** ouvert de session "
+                   "sur la période. Un /24 abritant une IP qui a réussi une connexion "
+                   "n'est jamais proposé en bloc — chaque IP fautive y reste en /32.")
+        if bloc_df is None or bloc_df.empty:
+            st.info("Aucune grappe ne réunit les trois critères sur cette période.")
+        else:
+            st.dataframe(bloc_df, width="stretch", hide_index=True)
+            st.download_button("⬇️ Télécharger (CSV)",
+                               bloc_df.to_csv(index=False).encode("utf-8"),
+                               "grappes_a_bloquer.csv", "text/csv",
+                               key="dl_blocage_candidats")
+            cli = meta.get("blocage_cli") or ""
+            if cli:
+                with st.expander("🧾 BROUILLON de configuration FortiGate — à relire "
+                                 "avant de coller"):
+                    st.warning("Brouillon généré depuis les logs. Vérifier chaque grappe "
+                               "et le nom de l'interface avant application sur le boîtier.")
+                    st.code(cli, language="bash")
 
     with tab_ev:
         raw_ev = tables["events"]

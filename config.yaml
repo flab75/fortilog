@@ -71,6 +71,18 @@ comptes_cibles:
   seuil_ip_campagne: 3    # IP ne tentant QUE ce compte : campagne distribuée (moyen)
                           # au-delà de ce nb d'IP distinctes sur le compte
 
+# Grappes d'IP CANDIDATES à un blocage (liste de travail, l'outil ne bloque jamais rien).
+# Retenues : IP externe hors infrastructure, ayant tenté au moins `seuil_comptes_inexistants`
+# comptes ABSENTS du référentiel, et n'ayant JAMAIS ouvert de session sur la période
+# (garde-fou anti-coupure). Regroupement en /24 — sauf si le /24 abrite une IP ayant réussi
+# une connexion, auquel cas les IP fautives restent en /32.
+blocage_candidats:
+  actif: true
+  seuil_comptes_inexistants: 5
+  max_grappes: 50
+  nom_groupe: BLOCKLIST-FORTILOG  # nom de l'addrgrp dans le BROUILLON CLI
+  interface_wan: wan1             # interface visée par la local-in-policy du brouillon
+
 # R17 — pays attendus des accès RÉUSSIS (codes ISO2, liste vide = règle inactive).
 # Un accès abouti hors de cette liste -> `faible` (SUSPICION) : congés, VPN personnel et
 # opérateur mobile déplacent légitimement un utilisateur. L'intérêt principal est l'inverse :

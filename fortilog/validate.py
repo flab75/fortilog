@@ -194,6 +194,24 @@ def validate_config(cfg: dict) -> list[str]:
                     except (ValueError, TypeError):
                         errors.append(f"comptes_cibles.{k} : '{v}' n'est pas un entier valide")
 
+    # Grappes candidates au blocage (section optionnelle) : actif booléen, seuils > 0
+    bc = cfg.get("blocage_candidats")
+    if bc is not None:
+        if not isinstance(bc, dict):
+            errors.append(f"blocage_candidats : attendu un dictionnaire, reçu {type(bc).__name__}")
+        else:
+            if bc.get("actif") is not None and not isinstance(bc.get("actif"), bool):
+                errors.append(
+                    f"blocage_candidats.actif : attendu un booléen, reçu {bc.get('actif')!r}")
+            for k in ("seuil_comptes_inexistants", "max_grappes"):
+                v = bc.get(k)
+                if v is not None:
+                    try:
+                        if int(v) <= 0:
+                            errors.append(f"blocage_candidats.{k} : doit être > 0, reçu {v}")
+                    except (ValueError, TypeError):
+                        errors.append(f"blocage_candidats.{k} : '{v}' n'est pas un entier valide")
+
     # Pays attendus (R17, clé optionnelle) : liste de codes ISO2
     pa = cfg.get("pays_attendus")
     if pa is not None:

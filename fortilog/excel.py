@@ -5,8 +5,8 @@ import pandas as pd
 
 SHEETS_ORDER = ["Rapport", "Tableau de bord", "Sessions VPN", "UTM descriptif", "Evenements signales",
                 "Acteurs a risque", "Chaines suspectes", "IP malveillantes", "Audit config",
-                "Comparaison config", "Sources externes", "Rafales", "Differentiels",
-                "Donnees unifiees", "Referentiel", "Guide des logs"]
+                "Comparaison config", "Sources externes", "Blocages local-in", "Rafales", "Differentiels",
+                "Blocage candidats", "Donnees unifiees", "Referentiel", "Guide des logs"]
 
 SEV_COLORS = {"critique": "#C00000", "eleve": "#E26B0A", "moyen": "#BF8F00",
               "faible": "#7F7F7F", "info": "#9CC3E5"}
@@ -114,6 +114,9 @@ def write_workbook(path, tables, cfg, analysis_text=""):
         _write_df(writer, "UTM descriptif", tables.get("utm_descriptifs"), header_fmt)
         # Efficacité des contre-mesures : une ligne par IP ayant subi un drop local-in
         _write_df(writer, "Blocages local-in", tables.get("blocages_local_in"), header_fmt,
+                  max_width=80)
+        # Grappes d'IP candidates à un blocage (liste de travail, décision humaine)
+        _write_df(writer, "Blocage candidats", tables.get("blocage_candidats"), header_fmt,
                   max_width=80)
         _write_df(writer, "Rafales", tables["bursts"], header_fmt)
         _write_df(writer, "Differentiels", tables["diff"], header_fmt)

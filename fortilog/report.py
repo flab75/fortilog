@@ -111,6 +111,25 @@ def build_report(tables, meta) -> str:
         L.append("  (Fenêtre = celle des logs fournis. Si les drops local-in ne sont pas "
                  "journalisés sur le boîtier, l'absence de ligne ne prouve rien.)")
         L.append("")
+    bc = tables.get("blocage_candidats")
+    if bc is not None and not bc.empty:
+        L.append(f"GRAPPES D'IP CANDIDATES À UN BLOCAGE : {len(bc)} (liste de travail, "
+                 "l'outil ne bloque rien — décision humaine)")
+        for _, r in bc.iterrows():
+            L.append(f"    {r['grappe']} ({r['n_ip']} IP) "
+                     + (f"[{r['pays']} / {r['asn']} {r['org']}] " if r["pays"] or r["asn"] else "")
+                     + f": {r['n_echecs']} échecs, {r['n_comptes_inexistants']} comptes "
+                     f"inexistants tentés — {r['verification']}"
+                     + (f" — réputation: {r['reputation']}" if r["reputation"] else ""))
+        L.append("  (Critères : IP externe hors infrastructure, ≥ N comptes inexistants tentés, "
+                 "AUCUNE session réussie sur la période. Un /24 abritant une IP ayant réussi "
+                 "une connexion n'est jamais proposé en bloc.)")
+        if meta.get("blocage_cli"):
+            L.append("")
+            L.append("  --- BROUILLON DE CONFIGURATION À RELIRE (ne pas coller tel quel) ---")
+            for line in meta["blocage_cli"].split("\n"):
+                L.append("  " + line)
+        L.append("")
     ud = tables.get("utm_descriptifs")
     if ud is not None and not ud.empty:
         L.append("AGRÉGATS DESCRIPTIFS UTM (sans règle d'alerte) :")

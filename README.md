@@ -98,7 +98,7 @@ fortilog --input ./logs --config config.yaml --output ./rapport
 > Sans installation (`pip install`), les commandes `python -m fortilog.main`,
 > `python -m fortilog.confdiff`, `python -m fortilog.confgen` et `python -m fortilog.ack` fonctionnent aussi.
 
-## Sorties (classeur, 17 feuilles)
+## Sorties (classeur, 18 feuilles)
 0. `Rapport` — **synthèse** qui décrit les résultats et explique les problèmes, en distinguant
    **[AVÉRÉ]** (état de config, volumes) de **[À CONFIRMER]** (suspicions). Chaque section
    (config, events, IP externes) détaille les constats les plus sévères individuellement
@@ -127,11 +127,15 @@ fortilog --input ./logs --config config.yaml --output ./rapport
 9. `Audit config` — constats sur les `.conf` FortiGate importés (comptes, accès, automation) — **à confirmer**.
 10. `Comparaison config` — écarts (ajout/suppr/modif) vs une config de référence + attribution qui/quand — **à confirmer**.
 11. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
-12. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
-13. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
-14. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
-15. `Referentiel` — la configuration du « normal » utilisée.
-16. `Guide des logs` — à quoi sert chaque fichier de log FortiCloud, ce que l'outil en fait,
+12. `Blocage candidats` — **grappes d'IP candidates à un blocage** (/24 ou /32), avec
+   géo/ASN, volume d'échecs, nombre de comptes inexistants tentés et réputation
+   (voir « Grappes d'IP candidates à un blocage » ci-dessous). **Liste de travail : l'outil
+   ne bloque rien.**
+13. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
+14. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
+15. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
+16. `Referentiel` — la configuration du « normal » utilisée.
+17. `Guide des logs` — à quoi sert chaque fichier de log FortiCloud, ce que l'outil en fait,
    lesquels sont indispensables et lesquels ne servent à rien pour cette analyse
    (voir « Guide des fichiers de log » ci-dessous).
 
@@ -296,6 +300,38 @@ cette analyse**, pas « à supprimer de FortiCloud ».
   L'UI affiche le même rapport (onglet **Rapport**).
 - **Jamais bloquant** : base absente ou vieillie n'interrompt jamais l'analyse.
 
+## Grappes d'IP candidates à un blocage (`blocklist.py`)
+Répond à la question « lesquelles bloquer, et on est sûr de laquelle ? ». Une IP n'est
+retenue que si les TROIS critères sont réunis dans les logs fournis :
+1. **externe** et hors infrastructure connue (WAN/mgmt, peers IPsec, DNS légitimes) ;
+2. a tenté au moins `blocage_candidats.seuil_comptes_inexistants` (défaut 5) comptes
+   **absents du référentiel** — mesuré sur de vrais exports : une IP d'attaque en tente 65 à
+   640, un utilisateur qui se trompe de mot de passe en tente **un** ;
+3. **aucune session réussie** (`Admin login successful` / `SSL VPN tunnel up`) sur la période.
+
+**Regroupement en /24** (c'est ainsi qu'on bloque réellement : un objet, pas quarante).
+L'ASN et le pays de la grappe sont affichés à titre descriptif ; un /24 relève en pratique
+d'un seul opérateur. **Garde-fou anti-coupure** : si un /24 abrite par ailleurs une IP
+depuis laquelle quelqu'un a ouvert une session, le /24 n'est **jamais** proposé en bloc —
+chaque IP fautive y reste en `/32`.
+
+Le regroupement par **similarité de dictionnaire** (Jaccard sur les identifiants tentés) a
+été essayé puis **écarté, mesures à l'appui** : les bots d'une même campagne *se partagent*
+le dictionnaire (J ≈ 0,01 entre deux IP voisines du même /24 tapant 635 comptes chacune).
+Il aurait vu quarante campagnes là où il y en a deux.
+
+Sorties : feuille **« Blocage candidats »**, section du rapport texte, onglet Streamlit
+« 🚫 Grappes à bloquer » (+ CSV), et un **BROUILLON de configuration FortiGate** dans un
+champ déroulant (`meta["blocage_cli"]`) : objets `firewall address`, `addrgrp`
+(`blocage_candidats.nom_groupe`) et une `local-in-policy` sur
+`blocage_candidats.interface_wan` — avec `set action deny` **explicite** (sans lui la règle
+peut rester inerte, cf. constat C10) et `local-in-deny-unicast enable` pour pouvoir ensuite
+*vérifier* que le blocage agit. Brouillon **à relire**, jamais appliqué par l'outil.
+
+Vérifié sur les vrais logs du 21/09 : 45 grappes, en tête `77.91.71.0/24` (6 IP, IL/AS211486,
+3 809 échecs) et `185.136.15.0/24` (5 IP, KZ/AS205997) ; les 5 IP ayant réellement monté un
+tunnel ce jour-là sont absentes de la liste et de leurs /24.
+
 ## Efficacité des blocages local-in (`blocages.py`)
 - Répond à « la contre-mesure posée sur cette IP fonctionne-t-elle ? ». Pour chaque IP
   source de `traffic/local` ayant au moins un `action="deny" policytype="local-in-policy"` :
@@ -438,7 +474,7 @@ JSON lisible et éditable.
 
 ## Tests
 
-Suite pytest versionnée : **279 tests rapides** + **10 tests sur vrais logs** (@slow) = **289 au total**.
+Suite pytest versionnée : **289 tests rapides** + **10 tests sur vrais logs** (@slow) = **299 au total**.
 
 ```bash
 # Tests rapides (fixtures synthétiques)
@@ -459,6 +495,9 @@ Couverture des tests :
 - **geo.py** : 22 cas (portée, lookup CSV/TSV/CIDR, enrichissement géo + réputation,
   dégradation, top sources, exclusion infra, exclusion bogon interne).
 - **confaudit.py** : 14 cas (parsing CLI, C1-C8, config propre sans critique, tri par sévérité).
+- **blocklist.py** : 10 cas (regroupement /24, seuil de comptes inexistants, comptes du
+  référentiel ignorés, IP ayant réussi une session exclue, /24 protégé par un voisin
+  légitime → /32, IP interne et infrastructure exclues, désactivation, brouillon CLI).
 - **blocages.py / confaudit C9-C12** : 13 cas (efficacité local-in, action non explicite,
   drops non journalisés, règle inerte, restriction SSL-VPN contournée).
 - **analysis.py** : 13 cas (sections, constats détaillés par règle, `max_constats` configurable,

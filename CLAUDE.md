@@ -38,11 +38,12 @@ fortilog/
 │   ├── confgen.py   # génère un config.yaml (BROUILLON) depuis des .conf (référentiel dérivé) ; CLI
 │   ├── fetch_fortinet_ranges.py # GÉNÉRATION (réseau) : plages IP Fortinet via ARIN -> .netset ; CLI
 │   ├── blocages.py  # build_blocages : efficacité des blocages local-in (descriptif)
+│   ├── blocklist.py # grappes d'IP candidates à un blocage (/24) + BROUILLON CLI FortiGate
 │   ├── vpn.py       # build_sessions : encart VPN (1 ligne = 1 tunnel, motif de clôture, légitimité)
 │   ├── logguide.py  # catalogue statique : à quoi sert chaque fichier de log (utile / inutile)
 │   ├── analysis.py  # build_analysis : rapport de SYNTHÈSE (décrit/explique, [AVÉRÉ]/[À CONFIRMER])
 │   ├── report.py    # build_report (texte détaillé) + rappel des limites
-│   ├── excel.py     # write_workbook (xlsxwriter, 17 feuilles, « Rapport » en 1re)
+│   ├── excel.py     # write_workbook (xlsxwriter, 18 feuilles, « Rapport » en 1re)
 │   ├── validate.py  # validate_config : vérifie le config.yaml au démarrage (CIDR, regex, seuils)
 │   ├── ui_helpers.py # prepare_events/metrics/agg/bursts/diff — helpers testables hors-UI
 │   └── main.py      # run(input, config, output) + CLI argparse
@@ -59,6 +60,7 @@ fortilog/
     ├── test_validate.py # validation config (valide + cas d'erreur)
     ├── test_ui_helpers.py   # 13 tests hors-UI (prepare_events, metrics, diff, badge…)
     ├── test_blocages.py # efficacité local-in (A2) + constats C9-C12 de confaudit
+    ├── test_blocklist.py # grappes candidates au blocage (critères, /24, garde-fou, CLI)
     ├── test_vpn.py      # encart VPN : appariement des tunnels, volumes, bruit TLS, guide des logs
     └── test_integration.py # scénario compromission + bénin + vrais logs (@slow)
 ```
@@ -285,7 +287,7 @@ externe » ne s'applique qu'aux accès **admin**.
 - **Inconnu** : tout autre type → parsing générique + marquage "(NON RECONNU)".
 
 ## État vérifié (tests réellement passés)
-- **Suite pytest : 279 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
+- **Suite pytest : 289 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
 - **Comparaison config** vérifiée sur vrais .conf : 127 écarts T1↔T2 ; attribution réelle
   (ex. « adminB modifié par adminA le 2026-06-22 11:26 ») ; hashs masqués.
 - **Rapport de synthèse** vérifié sur vrai T1 : relie GUI exposée WAN ↔ 128 422 échecs de login
@@ -670,3 +672,25 @@ contre-mesure**. Ordre de priorité : A1 → A2 → A3 → B → C → D → E.
 - **E1 — Erreurs IPsec phase 1** (`peer SA proposal not match local policy`, 112 sur la
   journée) : agrégat descriptif « scan IKE ».
 - **E2 — Top sources ICMP entrant** sur `traffic/local` (flood de ping observé).
+
+## Grappes d'IP candidates à un blocage (`blocklist.py`)
+`build_candidats(full, cfg, enricher=None, repdb=None) -> DataFrame` + `cli_brouillon(df, cfg)`.
+Répond à « lesquelles bloquer, et desquelles est-on sûr ? ». **Trois critères cumulatifs** :
+IP externe hors infrastructure connue ; ≥ `blocage_candidats.seuil_comptes_inexistants`
+(défaut 5) comptes tentés **absents du référentiel** (même union que R16 :
+`admins_connus | utilisateurs_vpn_actifs | utilisateurs_locaux`) ; **zéro session réussie**
+(`Admin login successful` / `SSL VPN tunnel up`) sur la période.
+- **Regroupement en /24** (on bloque un objet, pas quarante). ASN/pays affichés, descriptifs.
+  **Garde-fou anti-coupure** : un /24 abritant une IP ayant ouvert une session n'est jamais
+  proposé en bloc — les IP fautives y restent en `/32`.
+- **Jaccard sur les dictionnaires ÉCARTÉ, mesures à l'appui** : les bots d'une campagne se
+  partagent le dictionnaire (J ≈ 0,01 entre deux IP du même /24 tapant 635 comptes chacune).
+  Ne pas ré-introduire cette piste sans nouvelle mesure.
+- Sorties : `tables["blocage_candidats"]` → feuille « Blocage candidats », section rapport,
+  onglet Streamlit « 🚫 Grappes à bloquer » ; `meta["blocage_cli"]` → **BROUILLON CLI** dans
+  un champ déroulant (`firewall address` / `addrgrp` / `local-in-policy` avec
+  **`set action deny` explicite** — cf. piège C10 — et `local-in-deny-unicast enable` pour
+  pouvoir vérifier ensuite que le blocage agit). L'outil ne bloque jamais rien.
+- Vérifié sur les vrais logs du 21/09 : 45 grappes, `77.91.71.0/24` (6 IP, IL/AS211486,
+  3 809 échecs) et `185.136.15.0/24` (5 IP, KZ) en tête ; les 5 IP ayant monté un tunnel ce
+  jour-là sont absentes de la liste comme de leurs /24.
