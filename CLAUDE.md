@@ -40,11 +40,12 @@ fortilog/
 │   ├── blocages.py  # build_blocages : efficacité des blocages local-in (descriptif)
 │   ├── blocklist.py # grappes d'IP candidates à un blocage (/24) + BROUILLON CLI FortiGate
 │   ├── empreintes.py # empreinte de dictionnaire + cadence par IP (descriptif)
+│   ├── reseau_stats.py # bruit réseau entrant : IPsec phase 1, ICMP externe (descriptif)
 │   ├── vpn.py       # build_sessions : encart VPN (1 ligne = 1 tunnel, motif de clôture, légitimité)
 │   ├── logguide.py  # catalogue statique : à quoi sert chaque fichier de log (utile / inutile)
 │   ├── analysis.py  # build_analysis : rapport de SYNTHÈSE (décrit/explique, [AVÉRÉ]/[À CONFIRMER])
 │   ├── report.py    # build_report (texte détaillé) + rappel des limites
-│   ├── excel.py     # write_workbook (xlsxwriter, 19 feuilles, « Rapport » en 1re)
+│   ├── excel.py     # write_workbook (xlsxwriter, 20 feuilles, « Rapport » en 1re)
 │   ├── validate.py  # validate_config : vérifie le config.yaml au démarrage (CIDR, regex, seuils)
 │   ├── ui_helpers.py # prepare_events/metrics/agg/bursts/diff — helpers testables hors-UI
 │   └── main.py      # run(input, config, output) + CLI argparse
@@ -63,6 +64,7 @@ fortilog/
     ├── test_blocages.py # efficacité local-in (A2) + constats C9-C12 de confaudit
     ├── test_blocklist.py # grappes candidates au blocage (critères, /24, garde-fou, CLI)
     ├── test_empreintes.py # empreinte de dictionnaire + cadence (C1/C2)
+    ├── test_reseau_stats.py # bruit réseau entrant : IPsec phase 1, ICMP (E1/E2)
     ├── test_vpn.py      # encart VPN : appariement des tunnels, volumes, bruit TLS, guide des logs
     └── test_integration.py # scénario compromission + bénin + vrais logs (@slow)
 ```
@@ -289,7 +291,7 @@ externe » ne s'applique qu'aux accès **admin**.
 - **Inconnu** : tout autre type → parsing générique + marquage "(NON RECONNU)".
 
 ## État vérifié (tests réellement passés)
-- **Suite pytest : 298 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
+- **Suite pytest : 305 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
 - **Comparaison config** vérifiée sur vrais .conf : 127 écarts T1↔T2 ; attribution réelle
   (ex. « adminB modifié par adminA le 2026-06-22 11:26 ») ; hashs masqués.
 - **Rapport de synthèse** vérifié sur vrai T1 : relie GUI exposée WAN ↔ 128 422 échecs de login
@@ -622,10 +624,10 @@ objet inexistant ou un groupe vide → `moyen` « règle inerte ». Helpers `_na
 [À CONFIRMER], plus [AVÉRÉ] (une question ouverte n'est pas un fait).
 Vérifié sur les .conf réels du 21/09 : la conf 13:36 remonte C10 (règle `BLOCKLIST-VPN` sans
 `set action`), C11 et C12 silencieux (`local-in-deny-unicast=enable`, groupe à 2 membres) ;
-la conf 13:16 n'a aucune local-in-policy → aucun constat. Reste ouvert : E.
+la conf 13:16 n'a aucune local-in-policy → aucun constat. **Backlog P7 terminé (A→E).**
 **Contexte** : une demi-journée d'audit a porté sur une seule question — « est-ce que le
 blocage marche ? ». L'outil n'a aujourd'hui aucune notion d'**efficacité d'une
-contre-mesure**. Ordre de priorité : A1 → A2 → A3 → B → C → D → E. **Reste : E (E1 IPsec phase 1, E2 ICMP entrant).**
+contre-mesure**. Ordre de priorité : A1 → A2 → A3 → B → C → D → E — **tous faits**.
 
 **A. Efficacité des blocages**
 - **A1 — Ingérer `policytype`** (prérequis de tout le reste, correctif d'une ligne) :
@@ -670,10 +672,10 @@ contre-mesure**. Ordre de priorité : A1 → A2 → A3 → B → C → D → E. 
   dédup par lignes absorbe les comptages, mais un message « fichier X identique à Y, ignoré »
   évite de croire à deux sources.
 
-**E. Descriptif, faible priorité** (modèle `utm_stats`, aucune sévérité, jamais un constat)
-- **E1 — Erreurs IPsec phase 1** (`peer SA proposal not match local policy`, 112 sur la
+**E. Descriptif, faible priorité — ✅ FAIT (2026-09-21, `reseau_stats.py`)** (modèle `utm_stats`, aucune sévérité, jamais un constat)
+- **E1 ✅ — Erreurs IPsec phase 1** (`peer SA proposal not match local policy`, 112 sur la
   journée) : agrégat descriptif « scan IKE ».
-- **E2 — Top sources ICMP entrant** sur `traffic/local` (flood de ping observé).
+- **E2 ✅ — Top sources ICMP entrant** sur `traffic/local` (flood de ping observé).
 
 ## Grappes d'IP candidates à un blocage (`blocklist.py`)
 `build_candidats(full, cfg, enricher=None, repdb=None) -> DataFrame` + `cli_brouillon(df, cfg)`.
@@ -719,3 +721,21 @@ Aucun horodatage exploitable → « fenêtre inconnue » (jamais de borne invent
 **D2 — doublon de fichier** : MD5 du contenu calculé à l'ingestion ; un fichier déjà vu est
 ignoré et marqué `doublon_de` dans `meta["files"]` + ligne « IDENTIQUE à X » dans le rapport
 et sur stderr. La dédup par lignes absorbait les comptages, mais on croyait à deux sources.
+
+## Bruit réseau entrant (E1/E2 — FAIT 2026-09-21, `reseau_stats.py`)
+`build_reseau_descriptifs(full, cfg, enricher=None) -> DataFrame` — DESCRIPTIF, aucune
+sévérité, aucun constat (contrat `utm_stats`). Deux sujets dans une seule table :
+**E1** erreurs `IPsec phase 1` par IP avec le `reason` TEL QUEL ; **E2** ICMP entrant sur
+`traffic/local`, sources EXTERNES seulement (hors infra connue) — sinon les 29 000 pings
+d'un routeur interne vers sa passerelle noient tout.
+**Piège mesuré** : `proto` n'est NI dans `TARGET_COLS` NI dans `ANALYSIS_COLS` (une colonne
+objet de plus sur des millions de lignes) → l'ICMP est reconnu par `app="PING"`, vérifié
+équivalent sur les vrais logs (32 255 lignes `proto=1` ⟺ 32 255 `app="PING"`, aucun écart).
+Export sans ce champ → rien ne remonte, jamais d'estimation (test dédié).
+Liste bornée à `reseau_descriptif.top_n` (défaut 20) PAR SUJET, mais chaque ligne porte
+`n_lignes_sujet`/`n_sources_sujet` : une liste tronquée ne doit pas faire croire que 20
+sources sont tout ce qu'il y a. Sorties : `tables["reseau_descriptif"]` → feuille
+« Reseau descriptif », section rapport, onglet Streamlit « 📡 Bruit réseau » (+ CSV).
+Vérifié sur les vrais logs du 21/09 : 112 négociations IPsec refusées depuis 102 IP
+(1-2 chacune : DigitalOcean, Driftnet, Hurricane, Google Cloud) et 3 543 pings entrants
+depuis 692 IP externes, dont 1 476 d'une seule (AS396986).

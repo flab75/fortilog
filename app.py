@@ -215,7 +215,7 @@ if _res:
     bloc_df = tables.get("blocage_candidats")
     n_bloc = 0 if bloc_df is None else len(bloc_df)
     (tab_report, tab_ev, tab_vpn, tab_actors, tab_chains, tab_conf, tab_cdiff,
-     tab_bloc, tab_emp, tab_agg, tab_burst, tab_diff, tab_guide) = st.tabs([
+     tab_bloc, tab_emp, tab_res, tab_agg, tab_burst, tab_diff, tab_guide) = st.tabs([
         "📝 Rapport",
         "🚨 Événements signalés",
         f"🔐 Sessions VPN ({n_vpn})",
@@ -225,6 +225,7 @@ if _res:
         f"🔁 Comparaison config ({n_cdiff})",
         f"🚫 Grappes à bloquer ({n_bloc})",
         "🔬 Empreintes & cadence",
+        "📡 Bruit réseau",
         "📊 Tableau de bord",
         "⚡ Rafales",
         "🔄 Différentiels",
@@ -248,6 +249,20 @@ if _res:
             st.download_button("⬇️ Télécharger (CSV)",
                                emp_df.to_csv(index=False).encode("utf-8"),
                                "empreintes_ip.csv", "text/csv", key="dl_empreintes_ip")
+
+    with tab_res:
+        st.caption("**Descriptif, sans sévérité.** Négociations IPsec phase 1 refusées et "
+                   "pings entrants d'IP externes : ce que les logs montrent, sans le "
+                   "qualifier de « scan » ni d'« attaque ». L'ICMP est reconnu par le champ "
+                   "`app=PING` du boîtier ; un export où il est vide ne remonte rien.")
+        res_df = tables.get("reseau_descriptif")
+        if res_df is None or res_df.empty:
+            st.info("Aucune erreur IPsec phase 1 ni ping externe dans les logs fournis.")
+        else:
+            st.dataframe(res_df, width="stretch", hide_index=True)
+            st.download_button("⬇️ Télécharger (CSV)",
+                               res_df.to_csv(index=False).encode("utf-8"),
+                               "reseau_descriptif.csv", "text/csv", key="dl_reseau_descriptif")
 
     with tab_bloc:
         st.caption("Liste de TRAVAIL : l'outil ne bloque rien et ne décide rien. "

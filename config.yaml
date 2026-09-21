@@ -90,6 +90,12 @@ empreintes:
   min_tentatives: 10
   max_lignes: 30
 
+# Bruit réseau entrant (E1/E2) — DESCRIPTIF, aucune sévérité : négociations IPsec
+# phase 1 refusées et pings entrants d'IP externes. `top_n` = lignes par sujet.
+reseau_descriptif:
+  actif: true
+  top_n: 20
+
 # R17 — pays attendus des accès RÉUSSIS (codes ISO2, liste vide = règle inactive).
 # Un accès abouti hors de cette liste -> `faible` (SUSPICION) : congés, VPN personnel et
 # opérateur mobile déplacent légitimement un utilisateur. L'intérêt principal est l'inverse :

@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats, vpn, logguide, blocages, blocklist, empreintes
+from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats, vpn, logguide, blocages, blocklist, empreintes, reseau_stats
 from .common import SEV_ORDER, FAIL_LOGDESC, str_col
 from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
 from .validate import validate_config
@@ -102,7 +102,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
         tables = {"unifie": empty, "events": empty, "chains": empty, "agg": empty,
                   "bursts": empty, "diff": empty, "security_rating": empty, "acteurs": empty,
                   "utm_descriptifs": empty, "blocages_local_in": empty,
-                  "blocage_candidats": empty, "empreintes_ip": empty,
+                  "blocage_candidats": empty, "empreintes_ip": empty, "reseau_descriptif": empty,
                   "sources_externes": empty, "reputation": empty,
                   "config_audit": config_audit, "config_diff": config_diff,
                   "vpn_sessions": empty, "log_guide": logguide.build_guide([]),
@@ -291,6 +291,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     meta["blocage_cli"] = blocklist.cli_brouillon(tables["blocage_candidats"], cfg)
     # Empreinte de dictionnaire + cadence par IP (descriptif, aucune sévérité)
     tables["empreintes_ip"] = empreintes.build_empreintes(full, cfg)
+    tables["reseau_descriptif"] = reseau_stats.build_reseau_descriptifs(full, cfg, enricher)
     # Couverture des comptes du référentiel (descriptif, pas de feuille dédiée)
     meta["couverture_comptes"] = actors.build_couverture(full, cfg, comptes_conf).to_dict("records")
 

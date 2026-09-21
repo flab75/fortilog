@@ -98,7 +98,7 @@ fortilog --input ./logs --config config.yaml --output ./rapport
 > Sans installation (`pip install`), les commandes `python -m fortilog.main`,
 > `python -m fortilog.confdiff`, `python -m fortilog.confgen` et `python -m fortilog.ack` fonctionnent aussi.
 
-## Sorties (classeur, 19 feuilles)
+## Sorties (classeur, 20 feuilles)
 0. `Rapport` — **synthèse** qui décrit les résultats et explique les problèmes, en distinguant
    **[AVÉRÉ]** (état de config, volumes) de **[À CONFIRMER]** (suspicions). Chaque section
    (config, events, IP externes) détaille les constats les plus sévères individuellement
@@ -135,11 +135,14 @@ fortilog --input ./logs --config config.yaml --output ./rapport
    tentés (échantillon), intervalle médian, régularité, et la colonne `suite` (quand
    guetter la prochaine tentative, ou depuis quand l'IP s'est tue) — **descriptif, sans
    règle d'alerte** (voir « Empreinte de dictionnaire et cadence » ci-dessous).
-14. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
-15. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
-16. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
-17. `Referentiel` — la configuration du « normal » utilisée.
-18. `Guide des logs` — à quoi sert chaque fichier de log FortiCloud, ce que l'outil en fait,
+14. `Reseau descriptif` — **bruit réseau entrant** : négociations IPsec phase 1 refusées
+   et pings entrants d'IP externes — **descriptif, sans règle d'alerte** (voir
+   « Bruit réseau entrant » ci-dessous).
+15. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
+16. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
+17. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
+18. `Referentiel` — la configuration du « normal » utilisée.
+19. `Guide des logs` — à quoi sert chaque fichier de log FortiCloud, ce que l'outil en fait,
    lesquels sont indispensables et lesquels ne servent à rien pour cette analyse
    (voir « Guide des fichiers de log » ci-dessous).
 
@@ -303,6 +306,24 @@ cette analyse**, pas « à supprimer de FortiCloud ».
   peuvent être obsolètes » — et une ligne dédiée dans la feuille **« Referentiel »**.
   L'UI affiche le même rapport (onglet **Rapport**).
 - **Jamais bloquant** : base absente ou vieillie n'interrompt jamais l'analyse.
+
+## Bruit réseau entrant (`reseau_stats.py`)
+**Descriptif, aucune sévérité, aucun constat** — même contrat que `utm_stats` : on décrit
+ce que les logs montrent, on ne le qualifie ni de « scan » ni d'« attaque ».
+- **E1 — IPsec phase 1** (`logdesc="IPsec phase 1 error"`) : une ligne par IP, avec le
+  `reason` **tel quel** (réel : `peer SA proposal not match local policy`).
+- **E2 — ICMP entrant** (ping) sur `traffic/local`, sources **externes** seulement : les
+  pings internes (un routeur qui sonde sa passerelle : 29 000 lignes sur la journée)
+  noieraient le tableau ; l'infrastructure connue est exclue comme ailleurs.
+  L'ICMP est reconnu par `app="PING"` renseigné par le boîtier — le protocole n'est pas
+  dans le frame d'analyse (une colonne de plus sur des millions de lignes). Un export où
+  ce champ est vide **ne remonte rien**, franchement, plutôt qu'une estimation.
+- La liste est bornée à `reseau_descriptif.top_n` (défaut 20) **par sujet**, mais chaque
+  ligne porte `n_lignes_sujet`/`n_sources_sujet` : une liste tronquée ne doit pas laisser
+  croire que 20 sources sont tout ce qu'il y a.
+- Vérifié sur les vrais logs du 21/09 : **112 négociations IPsec refusées depuis 102 IP
+  distinctes** (1 à 2 chacune — DigitalOcean, Driftnet, Hurricane…) et **3 543 pings
+  entrants depuis 692 IP externes**, dont 1 476 d'une seule (AS396986).
 
 ## Empreinte de dictionnaire et cadence (`empreintes.py`)
 **Descriptif, aucune sévérité** : *comment* chaque IP s'y prend, pas si c'est grave.
@@ -509,7 +530,7 @@ JSON lisible et éditable.
 
 ## Tests
 
-Suite pytest versionnée : **298 tests rapides** + **10 tests sur vrais logs** (@slow) = **308 au total**.
+Suite pytest versionnée : **305 tests rapides** + **10 tests sur vrais logs** (@slow) = **315 au total**.
 
 ```bash
 # Tests rapides (fixtures synthétiques)
@@ -530,6 +551,9 @@ Couverture des tests :
 - **geo.py** : 22 cas (portée, lookup CSV/TSV/CIDR, enrichissement géo + réputation,
   dégradation, top sources, exclusion infra, exclusion bogon interne).
 - **confaudit.py** : 14 cas (parsing CLI, C1-C8, config propre sans critique, tri par sévérité).
+- **reseau_stats.py** : 7 cas (agrégat IPsec par IP avec le `reason` tel quel, ICMP
+  interne et infra exclus, bornage top_n + tri, les deux sujets dans la même table,
+  champ `app` absent → rien plutôt qu'une estimation, totaux du sujet, désactivation).
 - **empreintes.py** : 8 cas (comptage des identifiants + échantillon borné, doublons
   d'identifiant, cadence régulière → prévision, cadence irrégulière, IP qui s'est tue →
   intervalles manqués, volume minimal, succès exclus, désactivation).

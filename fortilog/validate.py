@@ -229,6 +229,22 @@ def validate_config(cfg: dict) -> list[str]:
                     except (ValueError, TypeError):
                         errors.append(f"empreintes.{k} : '{v}' n'est pas un entier valide")
 
+    # Bruit réseau descriptif (section optionnelle) : actif booléen, top_n > 0
+    rs = cfg.get("reseau_descriptif")
+    if rs is not None:
+        if not isinstance(rs, dict):
+            errors.append(f"reseau_descriptif : attendu un dictionnaire, reçu {type(rs).__name__}")
+        else:
+            if rs.get("actif") is not None and not isinstance(rs.get("actif"), bool):
+                errors.append(f"reseau_descriptif.actif : attendu un booléen, reçu {rs.get('actif')!r}")
+            v = rs.get("top_n")
+            if v is not None:
+                try:
+                    if int(v) <= 0:
+                        errors.append(f"reseau_descriptif.top_n : doit être > 0, reçu {v}")
+                except (ValueError, TypeError):
+                    errors.append(f"reseau_descriptif.top_n : '{v}' n'est pas un entier valide")
+
     # Pays attendus (R17, clé optionnelle) : liste de codes ISO2
     pa = cfg.get("pays_attendus")
     if pa is not None:

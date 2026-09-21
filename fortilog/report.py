@@ -134,6 +134,21 @@ def build_report(tables, meta) -> str:
                  "prochaine tentative, soit depuis quand l'IP s'est tue — une observation "
                  "à confronter aux contre-mesures, pas une preuve qu'elles en sont la cause.)")
         L.append("")
+    rs = tables.get("reseau_descriptif")
+    if rs is not None and not rs.empty:
+        L.append("BRUIT RÉSEAU ENTRANT (descriptif, sans sévérité) :")
+        for sujet, g in rs.groupby("sujet", sort=False):
+            f0 = g.iloc[0]
+            L.append(f"  {sujet} — {f0['n_lignes_sujet']} ligne(s) depuis "
+                     f"{f0['n_sources_sujet']} source(s) ; {len(g)} listée(s) ici "
+                     "(les plus volumineuses) :")
+            for _, r in g.iterrows():
+                geo_ = f" [{r['pays']} / {r['asn']} {r['org']}]" if r["pays"] or r["asn"] else ""
+                L.append(f"    {r['source']}{geo_} — {r['detail'] or str(r['occurrences'])}")
+        L.append("  (Ce que les logs montrent, sans qualification : ni « scan », ni « attaque ». "
+                 "L'ICMP est reconnu par le champ app=PING du boîtier ; un export où il est "
+                 "vide ne remonte rien.)")
+        L.append("")
     bc = tables.get("blocage_candidats")
     if bc is not None and not bc.empty:
         L.append(f"GRAPPES D'IP CANDIDATES À UN BLOCAGE : {len(bc)} (liste de travail, "

@@ -6,7 +6,7 @@ import pandas as pd
 SHEETS_ORDER = ["Rapport", "Tableau de bord", "Sessions VPN", "UTM descriptif", "Evenements signales",
                 "Acteurs a risque", "Chaines suspectes", "IP malveillantes", "Audit config",
                 "Comparaison config", "Sources externes", "Blocages local-in", "Rafales", "Differentiels",
-                "Blocage candidats", "Empreintes IP", "Donnees unifiees", "Referentiel", "Guide des logs"]
+                "Blocage candidats", "Empreintes IP", "Reseau descriptif", "Donnees unifiees", "Referentiel", "Guide des logs"]
 
 SEV_COLORS = {"critique": "#C00000", "eleve": "#E26B0A", "moyen": "#BF8F00",
               "faible": "#7F7F7F", "info": "#9CC3E5"}
@@ -120,6 +120,9 @@ def write_workbook(path, tables, cfg, analysis_text=""):
                   max_width=80)
         # Empreinte de dictionnaire + cadence par IP (descriptif, aucune sévérité)
         _write_df(writer, "Empreintes IP", tables.get("empreintes_ip"), header_fmt, max_width=80)
+        # Bruit réseau entrant : IPsec phase 1 refusée, ICMP externe (descriptif)
+        _write_df(writer, "Reseau descriptif", tables.get("reseau_descriptif"), header_fmt,
+                  max_width=80)
         _write_df(writer, "Rafales", tables["bursts"], header_fmt)
         _write_df(writer, "Differentiels", tables["diff"], header_fmt)
         _write_df(writer, "Referentiel", tables["ref"], header_fmt)
