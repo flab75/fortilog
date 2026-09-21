@@ -83,6 +83,13 @@ blocage_candidats:
   nom_groupe: BLOCKLIST-FORTILOG  # nom de l'addrgrp dans le BROUILLON CLI
   interface_wan: wan1             # interface visée par la local-in-policy du brouillon
 
+# Empreinte de dictionnaire + cadence par IP (C1/C2) — DESCRIPTIF, aucune sévérité.
+# `min_tentatives` : en deçà, une IP n'a pas d'« empreinte » exploitable (bruit).
+empreintes:
+  actif: true
+  min_tentatives: 10
+  max_lignes: 30
+
 # R17 — pays attendus des accès RÉUSSIS (codes ISO2, liste vide = règle inactive).
 # Un accès abouti hors de cette liste -> `faible` (SUSPICION) : congés, VPN personnel et
 # opérateur mobile déplacent légitimement un utilisateur. L'intérêt principal est l'inverse :

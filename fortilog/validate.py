@@ -212,6 +212,23 @@ def validate_config(cfg: dict) -> list[str]:
                     except (ValueError, TypeError):
                         errors.append(f"blocage_candidats.{k} : '{v}' n'est pas un entier valide")
 
+    # Empreintes/cadence (section optionnelle) : actif booléen, seuils > 0
+    em = cfg.get("empreintes")
+    if em is not None:
+        if not isinstance(em, dict):
+            errors.append(f"empreintes : attendu un dictionnaire, reçu {type(em).__name__}")
+        else:
+            if em.get("actif") is not None and not isinstance(em.get("actif"), bool):
+                errors.append(f"empreintes.actif : attendu un booléen, reçu {em.get('actif')!r}")
+            for k in ("min_tentatives", "max_lignes"):
+                v = em.get(k)
+                if v is not None:
+                    try:
+                        if int(v) <= 0:
+                            errors.append(f"empreintes.{k} : doit être > 0, reçu {v}")
+                    except (ValueError, TypeError):
+                        errors.append(f"empreintes.{k} : '{v}' n'est pas un entier valide")
+
     # Pays attendus (R17, clé optionnelle) : liste de codes ISO2
     pa = cfg.get("pays_attendus")
     if pa is not None:

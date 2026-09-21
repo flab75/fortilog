@@ -98,7 +98,7 @@ fortilog --input ./logs --config config.yaml --output ./rapport
 > Sans installation (`pip install`), les commandes `python -m fortilog.main`,
 > `python -m fortilog.confdiff`, `python -m fortilog.confgen` et `python -m fortilog.ack` fonctionnent aussi.
 
-## Sorties (classeur, 18 feuilles)
+## Sorties (classeur, 19 feuilles)
 0. `Rapport` — **synthèse** qui décrit les résultats et explique les problèmes, en distinguant
    **[AVÉRÉ]** (état de config, volumes) de **[À CONFIRMER]** (suspicions). Chaque section
    (config, events, IP externes) détaille les constats les plus sévères individuellement
@@ -131,11 +131,15 @@ fortilog --input ./logs --config config.yaml --output ./rapport
    géo/ASN, volume d'échecs, nombre de comptes inexistants tentés et réputation
    (voir « Grappes d'IP candidates à un blocage » ci-dessous). **Liste de travail : l'outil
    ne bloque rien.**
-13. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
-14. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
-15. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
-16. `Referentiel` — la configuration du « normal » utilisée.
-17. `Guide des logs` — à quoi sert chaque fichier de log FortiCloud, ce que l'outil en fait,
+13. `Empreintes IP` — **empreinte de dictionnaire et cadence par IP** : identifiants
+   tentés (échantillon), intervalle médian, régularité, et la colonne `suite` (quand
+   guetter la prochaine tentative, ou depuis quand l'IP s'est tue) — **descriptif, sans
+   règle d'alerte** (voir « Empreinte de dictionnaire et cadence » ci-dessous).
+14. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
+15. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
+16. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
+17. `Referentiel` — la configuration du « normal » utilisée.
+18. `Guide des logs` — à quoi sert chaque fichier de log FortiCloud, ce que l'outil en fait,
    lesquels sont indispensables et lesquels ne servent à rien pour cette analyse
    (voir « Guide des fichiers de log » ci-dessous).
 
@@ -300,6 +304,27 @@ cette analyse**, pas « à supprimer de FortiCloud ».
   L'UI affiche le même rapport (onglet **Rapport**).
 - **Jamais bloquant** : base absente ou vieillie n'interrompt jamais l'analyse.
 
+## Empreinte de dictionnaire et cadence (`empreintes.py`)
+**Descriptif, aucune sévérité** : *comment* chaque IP s'y prend, pas si c'est grave.
+Une ligne par IP ayant au moins `empreintes.min_tentatives` (défaut 10) échecs de login.
+- **Empreinte (C1)** : nombre d'identifiants distincts tentés + un échantillon. Le
+  vocabulaire signe la campagne à l'œil nu — comptes métier allemands d'un côté, noms
+  chinois, matricules étudiants ou comptes techniques de l'autre ; l'outil montre, il ne
+  nomme aucune campagne. Le **regroupement automatique par similarité (Jaccard)** a été
+  mesuré puis **écarté** : les bots d'une même campagne se partagent le dictionnaire
+  (J ≈ 0,01 entre deux IP voisines) — c'est le /24 qui les regroupe (cf. `blocklist.py`).
+- **Cadence (C2)** : intervalle médian et régularité (`très régulière (automate)` si
+  l'écart-type vaut moins d'un quart de la médiane). Colonne `suite` : si la cadence
+  projette la tentative suivante **après** la fin des logs → « prochaine attendue vers
+  HH:MM » (quand aller vérifier qu'un blocage agit) ; si elle la projette **avant** et
+  qu'il ne s'est rien passé → « aucune tentative depuis … , N intervalle(s) manqué(s) » —
+  l'IP s'est tue. Prévision, jamais un fait, et jamais présentée comme la preuve qu'une
+  contre-mesure en est la cause.
+- Vérifié sur les vrais logs du 21/09 : `195.58.140.130` tape un dictionnaire **allemand**
+  toutes les ~482 s (« régulière »), puis **plus rien depuis 13:23:45, 17 intervalles
+  manqués** — la règle local-in posée à 13:31:47 est confirmée côté comportement. Les
+  bots des /24 77.91.71 et 185.136.15 tapent 620-635 identifiants **tous différents**.
+
 ## Grappes d'IP candidates à un blocage (`blocklist.py`)
 Répond à la question « lesquelles bloquer, et on est sûr de laquelle ? ». Une IP n'est
 retenue que si les TROIS critères sont réunis dans les logs fournis :
@@ -331,6 +356,16 @@ peut rester inerte, cf. constat C10) et `local-in-deny-unicast enable` pour pouv
 Vérifié sur les vrais logs du 21/09 : 45 grappes, en tête `77.91.71.0/24` (6 IP, IL/AS211486,
 3 809 échecs) et `185.136.15.0/24` (5 IP, KZ/AS205997) ; les 5 IP ayant réellement monté un
 tunnel ce jour-là sont absentes de la liste et de leurs /24.
+
+## Couverture temporelle et doublons de fichiers
+- **Fenêtre réellement couverte par fichier** (D1), en tête du rapport : `couvre AAAA-MM-JJ
+  HH:MM:SS -> …`, suivie du rappel qu'« une absence d'événement ne vaut que DANS ces
+  fenêtres ». Sans elle, un log qui s'arrête à 13:34 se lit à tort comme « plus rien après ».
+  Fichier sans horodatage exploitable → « fenêtre inconnue », jamais de borne inventée.
+- **Doublon de fichier** (D2) : deux exports au contenu **MD5 identique** (même
+  téléchargement reçu deux fois) → le second est ignoré à l'ingestion et signalé
+  « IDENTIQUE à <fichier> ». La déduplication par lignes absorbait déjà les comptages,
+  mais on croyait à deux sources.
 
 ## Efficacité des blocages local-in (`blocages.py`)
 - Répond à « la contre-mesure posée sur cette IP fonctionne-t-elle ? ». Pour chaque IP
@@ -474,7 +509,7 @@ JSON lisible et éditable.
 
 ## Tests
 
-Suite pytest versionnée : **289 tests rapides** + **10 tests sur vrais logs** (@slow) = **299 au total**.
+Suite pytest versionnée : **298 tests rapides** + **10 tests sur vrais logs** (@slow) = **308 au total**.
 
 ```bash
 # Tests rapides (fixtures synthétiques)
@@ -495,6 +530,10 @@ Couverture des tests :
 - **geo.py** : 22 cas (portée, lookup CSV/TSV/CIDR, enrichissement géo + réputation,
   dégradation, top sources, exclusion infra, exclusion bogon interne).
 - **confaudit.py** : 14 cas (parsing CLI, C1-C8, config propre sans critique, tri par sévérité).
+- **empreintes.py** : 8 cas (comptage des identifiants + échantillon borné, doublons
+  d'identifiant, cadence régulière → prévision, cadence irrégulière, IP qui s'est tue →
+  intervalles manqués, volume minimal, succès exclus, désactivation).
+- **test_cli.py** : export en double (MD5) ignoré et annoncé, fenêtre couverte par fichier.
 - **blocklist.py** : 10 cas (regroupement /24, seuil de comptes inexistants, comptes du
   référentiel ignorés, IP ayant réussi une session exclue, /24 protégé par un voisin
   légitime → /32, IP interne et infrastructure exclues, désactivation, brouillon CLI).

@@ -40,7 +40,16 @@ def build_report(tables, meta) -> str:
             label = "(UTM reconnu, sans règles dédiées — grille générique)"
         else:
             label = "(reconnu)"
-        L.append(f"  - {f['name']}: type={f['type']}/{f['subtype']} {label} | {f['rows']} lignes")
+        if f.get("doublon_de"):
+            L.append(f"  - {f['name']}: IDENTIQUE à {f['doublon_de']} (contenu MD5 égal) "
+                     "— ignoré, ce n'est pas une seconde source")
+            continue
+        fenetre = (f" | couvre {f['debut']} -> {f['fin']}"
+                   if f.get("debut") else " | fenêtre inconnue (aucun horodatage exploitable)")
+        L.append(f"  - {f['name']}: type={f['type']}/{f['subtype']} {label} "
+                 f"| {f['rows']} lignes{fenetre}")
+    L.append("  (Une absence d'événement ne vaut que DANS ces fenêtres : un log qui s'arrête "
+             "à 13:34 ne dit rien de 13:40.)")
     if meta.get("n_configs"):
         L.append(f"Fichiers de configuration audités (.conf) : {meta['n_configs']}")
     L.append("")
@@ -110,6 +119,20 @@ def build_report(tables, meta) -> str:
             L.append(f"  {r['srcip']} [{r['boitiers']}] — {r['n_drops']} drop(s) — {r['statut']}")
         L.append("  (Fenêtre = celle des logs fournis. Si les drops local-in ne sont pas "
                  "journalisés sur le boîtier, l'absence de ligne ne prouve rien.)")
+        L.append("")
+    emp = tables.get("empreintes_ip")
+    if emp is not None and not emp.empty:
+        L.append("EMPREINTE DE DICTIONNAIRE ET CADENCE PAR IP (descriptif, sans sévérité) :")
+        for _, r in emp.iterrows():
+            L.append(f"    {r['srcip']} — {r['n_tentatives']} tentatives sur "
+                     f"{r['n_comptes']} identifiant(s) : {r['echantillon_comptes']}")
+            cad = (f"toutes les ~{r['cadence_mediane_s']} s ({r['regularite']})"
+                   if r["cadence_mediane_s"] != "" else "cadence non mesurable")
+            L.append(f"        {cad}" + (f" — {r['suite']}" if r["suite"] else ""))
+        L.append("  (Le vocabulaire tenté caractérise la campagne ; l'outil ne la nomme pas. "
+                 "La colonne « suite » extrapole la CADENCE : soit quand guetter la "
+                 "prochaine tentative, soit depuis quand l'IP s'est tue — une observation "
+                 "à confronter aux contre-mesures, pas une preuve qu'elles en sont la cause.)")
         L.append("")
     bc = tables.get("blocage_candidats")
     if bc is not None and not bc.empty:

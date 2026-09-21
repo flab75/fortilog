@@ -215,7 +215,7 @@ if _res:
     bloc_df = tables.get("blocage_candidats")
     n_bloc = 0 if bloc_df is None else len(bloc_df)
     (tab_report, tab_ev, tab_vpn, tab_actors, tab_chains, tab_conf, tab_cdiff,
-     tab_bloc, tab_agg, tab_burst, tab_diff, tab_guide) = st.tabs([
+     tab_bloc, tab_emp, tab_agg, tab_burst, tab_diff, tab_guide) = st.tabs([
         "📝 Rapport",
         "🚨 Événements signalés",
         f"🔐 Sessions VPN ({n_vpn})",
@@ -224,6 +224,7 @@ if _res:
         f"🛠 Audit config ({n_config})",
         f"🔁 Comparaison config ({n_cdiff})",
         f"🚫 Grappes à bloquer ({n_bloc})",
+        "🔬 Empreintes & cadence",
         "📊 Tableau de bord",
         "⚡ Rafales",
         "🔄 Différentiels",
@@ -232,6 +233,21 @@ if _res:
 
     with tab_report:
         st.markdown(meta.get("analysis", "_Rapport indisponible._"))
+
+    with tab_emp:
+        st.caption("**Descriptif, sans sévérité.** Ce que chaque IP tente (vocabulaire) et "
+                   "à quel rythme. Le vocabulaire caractérise la campagne — l'outil ne la "
+                   "nomme pas. La colonne « suite » extrapole la cadence : soit "
+                   "quand guetter la prochaine tentative, soit depuis quand l'IP s'est "
+                   "tue — à confronter aux contre-mesures, sans conclure.")
+        emp_df = tables.get("empreintes_ip")
+        if emp_df is None or emp_df.empty:
+            st.info("Aucune IP n'atteint le volume minimal de tentatives.")
+        else:
+            st.dataframe(emp_df, width="stretch", hide_index=True)
+            st.download_button("⬇️ Télécharger (CSV)",
+                               emp_df.to_csv(index=False).encode("utf-8"),
+                               "empreintes_ip.csv", "text/csv", key="dl_empreintes_ip")
 
     with tab_bloc:
         st.caption("Liste de TRAVAIL : l'outil ne bloque rien et ne décide rien. "

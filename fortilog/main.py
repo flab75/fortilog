@@ -2,13 +2,14 @@
 """Point d'entrée CLI : orchestre ingestion -> parsing -> normalisation -> détection -> comparaison -> sorties."""
 from __future__ import annotations
 import argparse
+import hashlib
 import itertools
 import sys
 from pathlib import Path
 import pandas as pd
 import yaml
 
-from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats, vpn, logguide, blocages, blocklist
+from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats, vpn, logguide, blocages, blocklist, empreintes
 from .common import SEV_ORDER, FAIL_LOGDESC, str_col
 from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
 from .validate import validate_config
@@ -101,7 +102,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
         tables = {"unifie": empty, "events": empty, "chains": empty, "agg": empty,
                   "bursts": empty, "diff": empty, "security_rating": empty, "acteurs": empty,
                   "utm_descriptifs": empty, "blocages_local_in": empty,
-                  "blocage_candidats": empty,
+                  "blocage_candidats": empty, "empreintes_ip": empty,
                   "sources_externes": empty, "reputation": empty,
                   "config_audit": config_audit, "config_diff": config_diff,
                   "vpn_sessions": empty, "log_guide": logguide.build_guide([]),
@@ -116,7 +117,19 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
 
     parts, meta_files = [], []
     n_files = len(files)
+    vus: dict[str, str] = {}   # D2 : empreinte MD5 -> nom du premier fichier portant ce contenu
     for i, f in enumerate(files, start=1):
+        # D2 — même export reçu deux fois (téléchargé en double) : la dédup par lignes
+        # absorbe les comptages, mais on croirait à deux sources. On le dit et on l'ignore.
+        md5 = hashlib.md5(f.read_bytes()).hexdigest()
+        if md5 in vus:
+            meta_files.append({"name": f.name, "type": "?", "subtype": "?", "reconnu": True,
+                               "rows": 0, "doublon_de": vus[md5]})
+            if not quiet:
+                print(f"fichier {i}/{n_files} : {f.name} — IDENTIQUE à {vus[md5]} (ignoré)",
+                      file=sys.stderr)
+            continue
+        vus[md5] = f.name
         t, s, reconnu = ingest.detect_type(f)
         cols = ingest.ANALYSIS_COLS + (ingest.VPN_COLS if (t, s) == ("event", "vpn") else [])
         df = load_file(f, columns=cols)  # colonnes d'affichage relues en 2ᵉ passe
@@ -139,6 +152,17 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     full["srcip"] = normalize.fill_srcip(full)
     full["boitier"] = normalize.assign_boitier(full, cfg.get("boitiers", {}), cfg.get("fichiers_boitier"))
     full = normalize.deduplicate(full)
+
+    # D1 — fenêtre réellement couverte par chaque fichier. Sans elle, une absence
+    # d'événement se lit à tort comme un succès (« le log s'arrête à 13:34, la tentative
+    # suivante n'y est simplement pas encore »).
+    if "source_file" in full.columns:
+        bornes = full.dropna(subset=["timestamp"]).groupby("source_file")["timestamp"] \
+                     .agg(["min", "max"])
+        for m in meta_files:
+            if m["name"] in bornes.index:
+                r = bornes.loc[m["name"]]
+                m["debut"], m["fin"] = str(r["min"])[:19], str(r["max"])[:19]
 
     # Optimisation mémoire : colonnes à faible cardinalité -> category (valeurs inchangées)
     for c in ["type", "subtype", "logdesc", "action", "status", "reason",
@@ -265,6 +289,8 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     # Grappes d'IP candidates à un blocage + brouillon CLI (jamais appliqué par l'outil)
     tables["blocage_candidats"] = blocklist.build_candidats(full, cfg, enricher, repdb)
     meta["blocage_cli"] = blocklist.cli_brouillon(tables["blocage_candidats"], cfg)
+    # Empreinte de dictionnaire + cadence par IP (descriptif, aucune sévérité)
+    tables["empreintes_ip"] = empreintes.build_empreintes(full, cfg)
     # Couverture des comptes du référentiel (descriptif, pas de feuille dédiée)
     meta["couverture_comptes"] = actors.build_couverture(full, cfg, comptes_conf).to_dict("records")
 

@@ -39,11 +39,12 @@ fortilog/
 │   ├── fetch_fortinet_ranges.py # GÉNÉRATION (réseau) : plages IP Fortinet via ARIN -> .netset ; CLI
 │   ├── blocages.py  # build_blocages : efficacité des blocages local-in (descriptif)
 │   ├── blocklist.py # grappes d'IP candidates à un blocage (/24) + BROUILLON CLI FortiGate
+│   ├── empreintes.py # empreinte de dictionnaire + cadence par IP (descriptif)
 │   ├── vpn.py       # build_sessions : encart VPN (1 ligne = 1 tunnel, motif de clôture, légitimité)
 │   ├── logguide.py  # catalogue statique : à quoi sert chaque fichier de log (utile / inutile)
 │   ├── analysis.py  # build_analysis : rapport de SYNTHÈSE (décrit/explique, [AVÉRÉ]/[À CONFIRMER])
 │   ├── report.py    # build_report (texte détaillé) + rappel des limites
-│   ├── excel.py     # write_workbook (xlsxwriter, 18 feuilles, « Rapport » en 1re)
+│   ├── excel.py     # write_workbook (xlsxwriter, 19 feuilles, « Rapport » en 1re)
 │   ├── validate.py  # validate_config : vérifie le config.yaml au démarrage (CIDR, regex, seuils)
 │   ├── ui_helpers.py # prepare_events/metrics/agg/bursts/diff — helpers testables hors-UI
 │   └── main.py      # run(input, config, output) + CLI argparse
@@ -61,6 +62,7 @@ fortilog/
     ├── test_ui_helpers.py   # 13 tests hors-UI (prepare_events, metrics, diff, badge…)
     ├── test_blocages.py # efficacité local-in (A2) + constats C9-C12 de confaudit
     ├── test_blocklist.py # grappes candidates au blocage (critères, /24, garde-fou, CLI)
+    ├── test_empreintes.py # empreinte de dictionnaire + cadence (C1/C2)
     ├── test_vpn.py      # encart VPN : appariement des tunnels, volumes, bruit TLS, guide des logs
     └── test_integration.py # scénario compromission + bénin + vrais logs (@slow)
 ```
@@ -287,7 +289,7 @@ externe » ne s'applique qu'aux accès **admin**.
 - **Inconnu** : tout autre type → parsing générique + marquage "(NON RECONNU)".
 
 ## État vérifié (tests réellement passés)
-- **Suite pytest : 289 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
+- **Suite pytest : 298 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
 - **Comparaison config** vérifiée sur vrais .conf : 127 écarts T1↔T2 ; attribution réelle
   (ex. « adminB modifié par adminA le 2026-06-22 11:26 ») ; hashs masqués.
 - **Rapport de synthèse** vérifié sur vrai T1 : relie GUI exposée WAN ↔ 128 422 échecs de login
@@ -620,10 +622,10 @@ objet inexistant ou un groupe vide → `moyen` « règle inerte ». Helpers `_na
 [À CONFIRMER], plus [AVÉRÉ] (une question ouverte n'est pas un fait).
 Vérifié sur les .conf réels du 21/09 : la conf 13:36 remonte C10 (règle `BLOCKLIST-VPN` sans
 `set action`), C11 et C12 silencieux (`local-in-deny-unicast=enable`, groupe à 2 membres) ;
-la conf 13:16 n'a aucune local-in-policy → aucun constat. Reste ouvert : C, D, E.
+la conf 13:16 n'a aucune local-in-policy → aucun constat. Reste ouvert : E.
 **Contexte** : une demi-journée d'audit a porté sur une seule question — « est-ce que le
 blocage marche ? ». L'outil n'a aujourd'hui aucune notion d'**efficacité d'une
-contre-mesure**. Ordre de priorité : A1 → A2 → A3 → B → C → D → E.
+contre-mesure**. Ordre de priorité : A1 → A2 → A3 → B → C → D → E. **Reste : E (E1 IPsec phase 1, E2 ICMP entrant).**
 
 **A. Efficacité des blocages**
 - **A1 — Ingérer `policytype`** (prérequis de tout le reste, correctif d'une ligne) :
@@ -651,20 +653,20 @@ contre-mesure**. Ordre de priorité : A1 → A2 → A3 → B → C → D → E.
   pas journalisés : l'efficacité des blocages n'est pas vérifiable » (réserve formulée à la main).
 - **B3 — `local-in-policy` inerte** : `srcaddr` pointant sur un groupe vide ou inexistant.
 
-**C. Caractériser les attaquants**
-- **C1 — Empreinte de dictionnaire par IP** : regrouper les IP par similarité (Jaccard) des
+**C. Caractériser les attaquants — ✅ FAIT (2026-09-21, `empreintes.py`)**
+- **C1 ✅ — Empreinte de dictionnaire par IP** : regrouper les IP par similarité (Jaccard) des
   jeux d'identifiants tentés → « campagne A / campagne B ». Observé : vocabulaire métier
   allemand (`Mitarbeiter`, `Buchhaltung`…) vs comptes techniques anglais + noms de villes
   (`snmp`, `hvac`, `london1`…). `noms_cibles` est global, aucun profil par IP.
-- **C2 — Cadence** : intervalle médian entre tentatives par IP. Les deux bots tapaient toutes
+- **C2 ✅ — Cadence** : intervalle médian entre tentatives par IP. Les deux bots tapaient toutes
   les ~8 min à la seconde près — signature d'automate, et surtout ça **prédit la prochaine
   tentative**, donc permet de confirmer un blocage au lieu d'attendre au hasard.
 
-**D. Honnêteté sur la couverture temporelle**
-- **D1 — Fenêtre couverte par fichier**, affichée en tête de rapport : sans elle, une absence
+**D. Honnêteté sur la couverture temporelle — ✅ FAIT (2026-09-21, `main.run` + `report.py`)**
+- **D1 ✅ — Fenêtre couverte par fichier**, affichée en tête de rapport : sans elle, une absence
   d'événement se lit à tort comme un succès (« le log s'arrête à 13:34:42, la prochaine
   tentative attendue n'y est pas encore »). C'est le garde-fou « dégradation honnête ».
-- **D2 — Dédup au niveau FICHIER (hash)** : même export de 25 Mo reçu 2× (MD5 identique). La
+- **D2 ✅ — Dédup au niveau FICHIER (hash)** : même export de 25 Mo reçu 2× (MD5 identique). La
   dédup par lignes absorbe les comptages, mais un message « fichier X identique à Y, ignoré »
   évite de croire à deux sources.
 
@@ -694,3 +696,26 @@ IP externe hors infrastructure connue ; ≥ `blocage_candidats.seuil_comptes_ine
 - Vérifié sur les vrais logs du 21/09 : 45 grappes, `77.91.71.0/24` (6 IP, IL/AS211486,
   3 809 échecs) et `185.136.15.0/24` (5 IP, KZ) en tête ; les 5 IP ayant monté un tunnel ce
   jour-là sont absentes de la liste comme de leurs /24.
+
+## Empreinte de dictionnaire + cadence, couverture temporelle (C1/C2/D1/D2 — FAIT 2026-09-21)
+**C1/C2 — `empreintes.py`** : `build_empreintes(full, cfg) -> DataFrame` (descriptif, aucune
+sévérité), une ligne par IP ayant ≥ `empreintes.min_tentatives` (défaut 10) échecs de login.
+Identifiants distincts + échantillon (8), intervalle médian, régularité (écart-type < ¼ de la
+médiane → « très régulière (automate) »), et colonne **`suite`** : prochaine tentative
+attendue si la cadence la projette APRÈS la fin des logs, sinon « aucune tentative depuis … ,
+N intervalle(s) manqué(s) » (l'IP s'est tue). C'est la vérification comportementale d'une
+contre-mesure — **sans conclure** qu'elle en est la cause. Le **clustering par Jaccard est
+écarté, mesures à l'appui** (cf. `blocklist.py`) : ne pas le ré-introduire sans nouvelle mesure.
+Sorties : `tables["empreintes_ip"]` → feuille « Empreintes IP », section rapport, onglet
+Streamlit « 🔬 Empreintes & cadence » (+ CSV).
+Vérifié sur les vrais logs du 21/09 : `195.58.140.130` tape un dictionnaire ALLEMAND toutes
+les ~482 s (« régulière ») puis plus rien depuis 13:23:45 (17 intervalles manqués) — la règle
+local-in posée à 13:31:47 est confirmée côté comportement ; les bots des /24 77.91.71 et
+185.136.15 tapent 620-635 identifiants tous différents (d'où l'échec du Jaccard).
+**D1 — fenêtre par fichier** : bornes min/max des timestamps par `source_file`, calculées
+après dédup dans `main.run`, stockées dans `meta["files"]` (`debut`/`fin`) et affichées en
+tête de rapport, suivies du rappel « une absence d'événement ne vaut que DANS ces fenêtres ».
+Aucun horodatage exploitable → « fenêtre inconnue » (jamais de borne inventée).
+**D2 — doublon de fichier** : MD5 du contenu calculé à l'ingestion ; un fichier déjà vu est
+ignoré et marqué `doublon_de` dans `meta["files"]` + ligne « IDENTIQUE à X » dans le rapport
+et sur stderr. La dédup par lignes absorbait les comptages, mais on croyait à deux sources.
