@@ -98,7 +98,7 @@ fortilog --input ./logs --config config.yaml --output ./rapport
 > Sans installation (`pip install`), les commandes `python -m fortilog.main`,
 > `python -m fortilog.confdiff`, `python -m fortilog.confgen` et `python -m fortilog.ack` fonctionnent aussi.
 
-## Sorties (classeur, 16 feuilles)
+## Sorties (classeur, 17 feuilles)
 0. `Rapport` — **synthèse** qui décrit les résultats et explique les problèmes, en distinguant
    **[AVÉRÉ]** (état de config, volumes) de **[À CONFIRMER]** (suspicions). Chaque section
    (config, events, IP externes) détaille les constats les plus sévères individuellement
@@ -438,7 +438,7 @@ JSON lisible et éditable.
 
 ## Tests
 
-Suite pytest versionnée : **266 tests rapides** + **10 tests sur vrais logs** (@slow) = **276 au total**.
+Suite pytest versionnée : **279 tests rapides** + **10 tests sur vrais logs** (@slow) = **289 au total**.
 
 ```bash
 # Tests rapides (fixtures synthétiques)
@@ -459,6 +459,8 @@ Couverture des tests :
 - **geo.py** : 22 cas (portée, lookup CSV/TSV/CIDR, enrichissement géo + réputation,
   dégradation, top sources, exclusion infra, exclusion bogon interne).
 - **confaudit.py** : 14 cas (parsing CLI, C1-C8, config propre sans critique, tri par sévérité).
+- **blocages.py / confaudit C9-C12** : 13 cas (efficacité local-in, action non explicite,
+  drops non journalisés, règle inerte, restriction SSL-VPN contournée).
 - **analysis.py** : 13 cas (sections, constats détaillés par règle, `max_constats` configurable,
   tag [À CONFIRMER] sur SUSPICION, top events §3/§4, corrélation WAN↔brute-force, alerte brèche,
   mode config-seul, vide).

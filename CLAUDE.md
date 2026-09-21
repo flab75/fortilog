@@ -37,11 +37,12 @@ fortilog/
 │   ├── confdiff.py  # comparaison 2 .conf (ajout/suppr/modif) + attribution qui/quand via logs ; CLI
 │   ├── confgen.py   # génère un config.yaml (BROUILLON) depuis des .conf (référentiel dérivé) ; CLI
 │   ├── fetch_fortinet_ranges.py # GÉNÉRATION (réseau) : plages IP Fortinet via ARIN -> .netset ; CLI
+│   ├── blocages.py  # build_blocages : efficacité des blocages local-in (descriptif)
 │   ├── vpn.py       # build_sessions : encart VPN (1 ligne = 1 tunnel, motif de clôture, légitimité)
 │   ├── logguide.py  # catalogue statique : à quoi sert chaque fichier de log (utile / inutile)
 │   ├── analysis.py  # build_analysis : rapport de SYNTHÈSE (décrit/explique, [AVÉRÉ]/[À CONFIRMER])
 │   ├── report.py    # build_report (texte détaillé) + rappel des limites
-│   ├── excel.py     # write_workbook (xlsxwriter, 16 feuilles, « Rapport » en 1re)
+│   ├── excel.py     # write_workbook (xlsxwriter, 17 feuilles, « Rapport » en 1re)
 │   ├── validate.py  # validate_config : vérifie le config.yaml au démarrage (CIDR, regex, seuils)
 │   ├── ui_helpers.py # prepare_events/metrics/agg/bursts/diff — helpers testables hors-UI
 │   └── main.py      # run(input, config, output) + CLI argparse
@@ -57,6 +58,7 @@ fortilog/
     ├── test_geo.py      # portée, lookup plages, enrichissement, dégradation, top sources
     ├── test_validate.py # validation config (valide + cas d'erreur)
     ├── test_ui_helpers.py   # 13 tests hors-UI (prepare_events, metrics, diff, badge…)
+    ├── test_blocages.py # efficacité local-in (A2) + constats C9-C12 de confaudit
     ├── test_vpn.py      # encart VPN : appariement des tunnels, volumes, bruit TLS, guide des logs
     └── test_integration.py # scénario compromission + bénin + vrais logs (@slow)
 ```
@@ -64,8 +66,8 @@ fortilog/
 ## Flux (`main.run`)
 **validate_config** → **audit .conf** (confaudit) → ingest → parse → concat → build_timestamp →
 assign_boitier → deduplicate → (catégorisation mémoire) → detect (R1-R12) → **correlate** →
-**enrichissement géo + réputation** → **sessions VPN** (vpn.build_sessions) → aggregate +
-bursts + diffs → report + excel.
+**enrichissement géo + réputation** → **sessions VPN** (vpn.build_sessions) → **blocages
+local-in** (blocages.build_blocages) → aggregate + bursts + diffs → report + excel.
 `run()` accepte logs ET/OU `.conf` ; **mode audit-config seul** si aucun log fourni
 (import de configs uniquement, p.ex. depuis l'UI Streamlit). `_emit()` calcule la
 **synthèse** (`analysis.build_analysis`), l'écrit en 1re feuille Excel « Rapport » +
@@ -283,7 +285,7 @@ externe » ne s'applique qu'aux accès **admin**.
 - **Inconnu** : tout autre type → parsing générique + marquage "(NON RECONNU)".
 
 ## État vérifié (tests réellement passés)
-- **Suite pytest : 266 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
+- **Suite pytest : 279 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
 - **Comparaison config** vérifiée sur vrais .conf : 127 écarts T1↔T2 ; attribution réelle
   (ex. « adminB modifié par adminA le 2026-06-22 11:26 ») ; hashs masqués.
 - **Rapport de synthèse** vérifié sur vrai T1 : relie GUI exposée WAN ↔ 128 422 échecs de login

@@ -40,10 +40,12 @@ LOG_GUIDE = {
         "Repris tel quel dans le rapport texte (bilan hardening).",
         "Utile en contexte — ce n'est PAS une détection de compromission."),
     ("traffic", "local"): (
-        "Trafic à destination ou en provenance du boîtier lui-même.",
+        "Trafic à destination ou en provenance du boîtier lui-même, avec l'action retenue "
+        "(`accept`, `deny`, `client-rst`…) et la famille de règle (`policytype`).",
         "R8 (sortie vers une destination non listée), R9 (pool VPN vers management), "
-        "volumétrie et sources externes.",
-        "Utile — surface les canaux sortants du boîtier ; volumineux."),
+        "encart « Efficacité des blocages local-in » (une IP a-t-elle encore atteint le "
+        "boîtier après le premier drop ?), volumétrie et sources externes.",
+        "Utile — seul fichier qui PROUVE qu'un blocage local-in fonctionne ; volumineux."),
     ("traffic", "forward"): (
         "Trafic traversant (postes -> Internet), le plus gros volume de tous.",
         "R8/R9, volumétrie, top des sources externes.",
@@ -79,6 +81,11 @@ NOTES = [
     "Pour l'analyse VPN seule, il suffit des fichiers `*-event-vpn-*.log`.",
     "Les `.conf` (backups de configuration) ne sont pas des logs : ils alimentent l'audit "
     "de configuration, la 2FA des comptes et la comparaison à une référence.",
+    "Pour vérifier qu'une contre-mesure fonctionne, déposer le `.conf` ET le "
+    "`*-traffic-local-*.log` : la config dit ce qui est censé bloquer (règle sans `action` "
+    "explicite, groupe vide, journalisation des drops désactivée), les logs disent ce qui "
+    "a effectivement été bloqué. Idem pour une restriction d'origine SSL-VPN : elle ne se "
+    "juge qu'en croisant le `.conf` avec les échecs de `*-event-vpn-*.log`.",
     "« Inutile » signifie : sans effet sur CETTE analyse. Ces fichiers gardent leur utilité "
     "pour le dépannage réseau ou la volumétrie.",
 ]
