@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats, vpn, logguide
+from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats, vpn, logguide, blocages
 from .common import SEV_ORDER, FAIL_LOGDESC, str_col
 from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
 from .validate import validate_config
@@ -100,7 +100,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
         ref_rows = [{"clé": k, "valeur": str(v)} for k, v in cfg.items()]
         tables = {"unifie": empty, "events": empty, "chains": empty, "agg": empty,
                   "bursts": empty, "diff": empty, "security_rating": empty, "acteurs": empty,
-                  "utm_descriptifs": empty,
+                  "utm_descriptifs": empty, "blocages_local_in": empty,
                   "sources_externes": empty, "reputation": empty,
                   "config_audit": config_audit, "config_diff": config_diff,
                   "vpn_sessions": empty, "log_guide": logguide.build_guide([]),
@@ -160,8 +160,13 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     # « compte sans 2FA » de « compte sans 2FA ET visé par des échecs ».
     _fail = str_col(full, "logdesc").isin(FAIL_LOGDESC)
     comptes_vises = set(str_col(full, "user")[_fail].str.lower().unique()) - {""}
+    # C9 : IP ayant atteint le portail SSL-VPN malgré une éventuelle restriction d'origine.
+    _vpnfail = str_col(full, "logdesc").eq("SSL VPN login fail") & str_col(full, "srcip").ne("")
+    _ips_vpn = {b: set(g) for b, g in
+                str_col(full, "srcip")[_vpnfail].groupby(full.loc[_vpnfail, "boitier"])}
     config_audit = confaudit.audit_files(conf_files, cfg, boitier_map=_boitier_for,
-                                         comptes_vises=comptes_vises)
+                                         comptes_vises=comptes_vises,
+                                         ips_vpn_echec=_ips_vpn or None)
     comptes_conf = confaudit.local_users_map(conf_files)
     # Encart VPN : une ligne = un tunnel (connexion, clôture, motif, légitimité).
     vpn_sessions, vpn_stats = vpn.build_sessions(full, cfg, comptes_conf, enricher, repdb)
@@ -254,6 +259,8 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     # Acteurs à risque : sur les événements ENRICHIS (géo/réputation), avant slim.
     tables["acteurs"] = actors.build_actors(events, full, meta, cfg)
     tables["utm_descriptifs"] = utm_stats.build_utm_descriptifs(full, files, cfg)
+    # Efficacité des contre-mesures local-in (descriptif, aucune sévérité)
+    tables["blocages_local_in"] = blocages.build_blocages(full, cfg)
     # Couverture des comptes du référentiel (descriptif, pas de feuille dédiée)
     meta["couverture_comptes"] = actors.build_couverture(full, cfg, comptes_conf).to_dict("records")
 

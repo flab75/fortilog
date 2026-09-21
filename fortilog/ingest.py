@@ -34,6 +34,8 @@ TARGET_COLS = ["date", "time", "tz", "eventtime", "logid", "type", "subtype",
                "tunnelid", "duration",
                # utm/app-ctrl
                "appid", "appcat", "app", "hostname", "apprisk", "direction", "policyid",
+               # traffic/local : discriminant d'un drop par local-in-policy (A1)
+               "policytype",
                # event/security-rating
                "auditscore", "criticalcount", "highcount", "mediumcount",
                "lowcount", "passedcount", "auditreporttype", "auditid"]
@@ -44,7 +46,7 @@ TARGET_COLS = ["date", "time", "tz", "eventtime", "logid", "type", "subtype",
 # rien qu'en pointeurs, donc en RETIRER est le plus gros levier mémoire.
 ANALYSIS_COLS = ["date", "time", "eventtime", "logid", "type", "subtype", "logdesc",
                  "user", "ui", "srcip", "remip", "dstip", "action", "status", "reason", "group",
-                 "cfgpath", "cfgobj", "app", "appcat", "apprisk", "hostname",
+                 "cfgpath", "cfgobj", "app", "appcat", "apprisk", "hostname", "policytype",
                  "auditscore", "criticalcount", "highcount", "mediumcount",
                  "lowcount", "passedcount", "auditreporttype"]
 

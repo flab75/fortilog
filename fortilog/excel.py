@@ -112,6 +112,9 @@ def write_workbook(path, tables, cfg, analysis_text=""):
         # Guide : à quoi sert chaque type de log, et lesquels n'apportent rien ici
         _write_df(writer, "Guide des logs", tables.get("log_guide"), header_fmt, max_width=80)
         _write_df(writer, "UTM descriptif", tables.get("utm_descriptifs"), header_fmt)
+        # Efficacité des contre-mesures : une ligne par IP ayant subi un drop local-in
+        _write_df(writer, "Blocages local-in", tables.get("blocages_local_in"), header_fmt,
+                  max_width=80)
         _write_df(writer, "Rafales", tables["bursts"], header_fmt)
         _write_df(writer, "Differentiels", tables["diff"], header_fmt)
         _write_df(writer, "Referentiel", tables["ref"], header_fmt)

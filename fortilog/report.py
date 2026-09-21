@@ -103,6 +103,14 @@ def build_report(tables, meta) -> str:
                  f"{st_.get('n_bruit_tls', 0)} ligne(s) de bruit TLS sans utilisateur — "
                  "poignées de main de scanners, pas des connexions.)")
         L.append("")
+    bl = tables.get("blocages_local_in")
+    if bl is not None and not bl.empty:
+        L.append("EFFICACITÉ DES BLOCAGES LOCAL-IN (descriptif, sans sévérité) :")
+        for _, r in bl.iterrows():
+            L.append(f"  {r['srcip']} [{r['boitiers']}] — {r['n_drops']} drop(s) — {r['statut']}")
+        L.append("  (Fenêtre = celle des logs fournis. Si les drops local-in ne sont pas "
+                 "journalisés sur le boîtier, l'absence de ligne ne prouve rien.)")
+        L.append("")
     ud = tables.get("utm_descriptifs")
     if ud is not None and not ud.empty:
         L.append("AGRÉGATS DESCRIPTIFS UTM (sans règle d'alerte) :")

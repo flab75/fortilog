@@ -108,26 +108,30 @@ fortilog --input ./logs --config config.yaml --output ./rapport
 2. `Sessions VPN` — **une ligne = un tunnel** : début/fin, durée, motif de clôture,
    volumes, IP source + géo/réputation, et une colonne `legitimite` descriptive
    (voir « Encart Sessions VPN » ci-dessous).
-3. `UTM descriptif` — top signatures/attaques, domaines/catégories, verdicts pour
+3. `Blocages local-in` — **efficacité des contre-mesures** : une ligne par IP ayant subi
+   au moins un drop `local-in-policy`, avec le nombre de drops, l'heure du premier, et
+   combien de connexions ont ATTEINT le service après lui (voir « Efficacité des blocages
+   local-in » ci-dessous). **Descriptif, sans sévérité.**
+4. `UTM descriptif` — top signatures/attaques, domaines/catégories, verdicts pour
    `utm/ips`/`utm/webfilter`/`utm/dns`/`utm/antivirus` — **descriptif, sans règle
    d'alerte** (voir « Agrégats descriptifs UTM » ci-dessous).
-4. `Evenements signales` — événements à risque, colorés par sévérité (info→critique), enrichis portée/pays/ASN/réputation.
-5. `Acteurs a risque` — IP externes et comptes agrégés depuis les événements, triés par un
+5. `Evenements signales` — événements à risque, colorés par sévérité (info→critique), enrichis portée/pays/ASN/réputation.
+6. `Acteurs a risque` — IP externes et comptes agrégés depuis les événements, triés par un
    **score de priorisation transparent** : `score = 100×n_critique + 30×n_eleve + 10×n_moyen
    + 3×n_faible + 50×(réputation non vide) + 20×(nb règles distinctes − 1)` (pondérations :
    `acteurs.poids`, plafond `acteurs.max_lignes` défaut 100). Le score sert à **trier** les
    entités à investiguer, **jamais à conclure**. IP d'infrastructure connue (WAN/mgmt,
    peers/DNS) exclues.
-6. `Chaines suspectes` — séquences corrélées (accès→compte→exfiltration) — **à confirmer**.
-7. `IP malveillantes` — sources présentes dans une liste de réputation (threat intel) — **à confirmer**.
-8. `Audit config` — constats sur les `.conf` FortiGate importés (comptes, accès, automation) — **à confirmer**.
-9. `Comparaison config` — écarts (ajout/suppr/modif) vs une config de référence + attribution qui/quand — **à confirmer**.
-10. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
-11. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
-12. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
-13. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
-14. `Referentiel` — la configuration du « normal » utilisée.
-15. `Guide des logs` — à quoi sert chaque fichier de log FortiCloud, ce que l'outil en fait,
+7. `Chaines suspectes` — séquences corrélées (accès→compte→exfiltration) — **à confirmer**.
+8. `IP malveillantes` — sources présentes dans une liste de réputation (threat intel) — **à confirmer**.
+9. `Audit config` — constats sur les `.conf` FortiGate importés (comptes, accès, automation) — **à confirmer**.
+10. `Comparaison config` — écarts (ajout/suppr/modif) vs une config de référence + attribution qui/quand — **à confirmer**.
+11. `Sources externes` — top des IP externes par volume (contexte géo/ASN) — voir « Enrichissement ».
+12. `Rafales` — pics détectés (seuils **adaptatifs** ajustables).
+13. `Differentiels` — entités apparues/disparues entre dates et entre boîtiers (Prio 1 alertées).
+14. `Donnees unifiees` — données parsées/dédupliquées (plafonnée, cf. limites).
+15. `Referentiel` — la configuration du « normal » utilisée.
+16. `Guide des logs` — à quoi sert chaque fichier de log FortiCloud, ce que l'outil en fait,
    lesquels sont indispensables et lesquels ne servent à rien pour cette analyse
    (voir « Guide des fichiers de log » ci-dessous).
 
@@ -292,6 +296,23 @@ cette analyse**, pas « à supprimer de FortiCloud ».
   L'UI affiche le même rapport (onglet **Rapport**).
 - **Jamais bloquant** : base absente ou vieillie n'interrompt jamais l'analyse.
 
+## Efficacité des blocages local-in (`blocages.py`)
+- Répond à « la contre-mesure posée sur cette IP fonctionne-t-elle ? ». Pour chaque IP
+  source de `traffic/local` ayant au moins un `action="deny" policytype="local-in-policy"` :
+  nombre de drops, premier/dernier drop, connexions ayant ATTEINT le service
+  (`accept`/`client-rst`/`server-rst`/`close`/`timeout`) au total et **après** le premier drop.
+  Sortie : « bloquée depuis 2026-09-21 13:31:47 — aucun accès depuis » ou « atteint ENCORE
+  le boîtier malgré la règle : N connexion(s) après le premier drop ».
+- Une IP sans aucun drop n'est pas un sujet de contre-mesure → absente de la table.
+  Nota (mesuré sur vrais logs) : `policytype="local-in-policy"` apparaît aussi sur du trafic
+  **accepté** — seul `action="deny"` fait un drop.
+- **Garde-fous** : aucune sévérité (c'est une vérification, pas une détection) ; la preuve
+  vaut pour la **fenêtre des logs fournis** uniquement ; si `local-in-deny-unicast` est
+  désactivé sur le boîtier, les drops ne sont pas journalisés et la table est vide —
+  absence de preuve, pas preuve d'absence.
+- Sorties : feuille **« Blocages local-in »**, section du rapport texte, table
+  `blocages_local_in` (donc aussi `--json` / `--csv`).
+
 ## Agrégats descriptifs UTM (sans règle d'alerte)
 - Pour `utm/ips`, `utm/webfilter`, `utm/dns`, `utm/antivirus` (types reconnus mais sans
   règle de détection dédiée), la feuille **« UTM descriptif »** et une section du
@@ -319,6 +340,12 @@ le CLI FortiGate et vérifie des **indices de compromission**, comparés au réf
   **moyen** sinon. Le détail indique la date du dernier changement de mot de passe.
 - **Portail SSL-VPN ouvert à toutes les IP sources** (`vpn ssl settings source-address all`) →
   moyen : c'est ce qui rend le portail atteignable par les campagnes de devinage de comptes.
+- **Restriction d'origine SSL-VPN en place mais contournée** (`source-address` ≠ `all`, et des
+  IP figurent quand même dans les échecs `SSL VPN login fail` des logs) → moyen, SUSPICION.
+  Un filtre large (groupe géographique p. ex.) « restreint » sans protéger. Visible seulement
+  en croisant config et logs : **sans logs, la règle est silencieuse**. Le contenu de l'objet
+  n'est pas résolu et la date de mise en place n'est pas dans le `.conf` (des échecs antérieurs
+  peuvent être comptés) → à vérifier sur le boîtier.
 
 On peut analyser des `.conf` **seuls** (sans logs). Tout est marqué **à confirmer** :
 un admin légitime récent peut être hors référentiel — ce n'est jamais une preuve.

@@ -593,3 +593,65 @@ du README : le mapping est indicatif (aide au reporting), pas une attribution.
    `ui_helpers.filter_events` (pure, testable hors UI — `tests/test_ui_helpers.py`).
    Vérifié en conditions réelles via `streamlit.testing.v1.AppTest` (upload fixture →
    analyse → sélection filtre « critique » → légende mise à jour en conséquence).
+
+### P7 — Vérifier qu'une contre-mesure fonctionne (noté 2026-09-21, session terrain)
+**A1/A2/A3 — ✅ FAIT (2026-09-21)** : `policytype` ingéré (`TARGET_COLS` + `ANALYSIS_COLS`) ;
+module `fortilog/blocages.py` (`build_blocages` → `tables["blocages_local_in"]`, feuille
+« Blocages local-in » + section rapport, DESCRIPTIF sans sévérité) ; constat **C9** dans
+`confaudit.py` (restriction d'origine SSL-VPN en place mais contournée, `moyen`, SUSPICION,
+alimenté par les IP en `SSL VPN login fail` passées via `audit_files(ips_vpn_echec=...)` —
+sans logs la règle est silencieuse). Vérifié sur les logs réels du 21/09 : « 195.58.140.130
+— 7 drops — bloquée depuis 13:31:47, aucun accès depuis » et C9 sur `source-address=GEO-FR`
+(1249 IP). ATTENTION mesurée sur vrais logs : `policytype="local-in-policy"` apparaît AUSSI
+sur du trafic accepté — seul `action="deny"` fait un drop. Reste ouvert : B, C, D, E.
+**Contexte** : une demi-journée d'audit a porté sur une seule question — « est-ce que le
+blocage marche ? ». L'outil n'a aujourd'hui aucune notion d'**efficacité d'une
+contre-mesure**. Ordre de priorité : A1 → A2 → A3 → B → C → D → E.
+
+**A. Efficacité des blocages**
+- **A1 — Ingérer `policytype`** (prérequis de tout le reste, correctif d'une ligne) :
+  le champ n'est dans NI `TARGET_COLS` NI `ANALYSIS_COLS` (`ingest.py:28/45`) — les lignes
+  sont parsées, le champ discriminant est jeté. Or la preuve décisive du blocage est
+  exactement `action="deny" policytype="local-in-policy" policyid=1`.
+- **A2 — Section « Efficacité des blocages local-in »** : par IP source sur `traffic/local`,
+  nb de `deny` vs nb de connexions ayant ATTEINT le service (`accept`/`client-rst`/`close`),
+  + horodatage du **premier deny**. Sortie type : « 195.58.x.x — bloquée depuis 13:31:47
+  (7 drops, 0 accès depuis) » ou « atteint encore le boîtier malgré une règle ». Tableau
+  reconstruit à la main 3 fois dans la journée.
+- **A3 — Recoupement logs ↔ config (le plus rentable)** : si `vpn ssl settings
+  source-address` ≠ `all` mais que des IP apparaissent quand même en `ssl-login-fail`, la
+  restriction d'origine **ne les couvre pas**. C8 (`confaudit.py:194`) ne se déclenche
+  aujourd'hui que sur `source-address = all` et reste **muet** dans ce cas — pourtant réel
+  (2 IP françaises passant derrière un filtre GEO-FR). Sévérité `moyen`, libellé
+  « restriction d'origine en place mais contournée par N IP ».
+
+**B. Audit de config — pièges rencontrés**
+- **B1 — `local-in-policy` sans `action` explicite** : FortiOS n'affiche pas le champ dans
+  `show` et la règle n'a bloqué qu'après un `set action deny` explicite. Indécidable depuis
+  la config (défaut `accept` ? re-commit nécessaire ?) → libellé conforme au garde-fou
+  directeur : « action non explicite dans la config — à vérifier sur le boîtier », sans conclure.
+- **B2 — `log setting` / `local-in-deny-unicast` désactivé** → « les drops local-in ne sont
+  pas journalisés : l'efficacité des blocages n'est pas vérifiable » (réserve formulée à la main).
+- **B3 — `local-in-policy` inerte** : `srcaddr` pointant sur un groupe vide ou inexistant.
+
+**C. Caractériser les attaquants**
+- **C1 — Empreinte de dictionnaire par IP** : regrouper les IP par similarité (Jaccard) des
+  jeux d'identifiants tentés → « campagne A / campagne B ». Observé : vocabulaire métier
+  allemand (`Mitarbeiter`, `Buchhaltung`…) vs comptes techniques anglais + noms de villes
+  (`snmp`, `hvac`, `london1`…). `noms_cibles` est global, aucun profil par IP.
+- **C2 — Cadence** : intervalle médian entre tentatives par IP. Les deux bots tapaient toutes
+  les ~8 min à la seconde près — signature d'automate, et surtout ça **prédit la prochaine
+  tentative**, donc permet de confirmer un blocage au lieu d'attendre au hasard.
+
+**D. Honnêteté sur la couverture temporelle**
+- **D1 — Fenêtre couverte par fichier**, affichée en tête de rapport : sans elle, une absence
+  d'événement se lit à tort comme un succès (« le log s'arrête à 13:34:42, la prochaine
+  tentative attendue n'y est pas encore »). C'est le garde-fou « dégradation honnête ».
+- **D2 — Dédup au niveau FICHIER (hash)** : même export de 25 Mo reçu 2× (MD5 identique). La
+  dédup par lignes absorbe les comptages, mais un message « fichier X identique à Y, ignoré »
+  évite de croire à deux sources.
+
+**E. Descriptif, faible priorité** (modèle `utm_stats`, aucune sévérité, jamais un constat)
+- **E1 — Erreurs IPsec phase 1** (`peer SA proposal not match local policy`, 112 sur la
+  journée) : agrégat descriptif « scan IKE ».
+- **E2 — Top sources ICMP entrant** sur `traffic/local` (flood de ping observé).

@@ -111,7 +111,7 @@ def local_users_map(conf_paths) -> dict[str, dict]:
 
 
 def audit_config(text: str, cfg: dict, source_file: str = "", boitier: str = "inconnu",
-                 comptes_vises=()) -> list[dict]:
+                 comptes_vises=(), ips_vpn_echec=None) -> list[dict]:
     """Applique la grille d'audit et renvoie une liste de constats (dicts)."""
     root = parse_config(text)
     admins = set(cfg.get("admins_connus", []))
@@ -192,13 +192,29 @@ def audit_config(text: str, cfg: dict, source_file: str = "", boitier: str = "in
                 f"user={u['nom']} (aucun two-factor ;{mdp})")
 
     # --- C8 : portail SSL-VPN joignable depuis l'Internet entier ---
+    # --- C9 (A3) : restriction d'origine EN PLACE mais contournée — visible seulement en
+    #     croisant la config avec les logs : des IP ont quand même atteint le portail.
+    #     Un filtre large (groupe géographique p. ex.) « restreint » sans protéger.
     for blk in find_blocks(root, "vpn ssl settings"):
         for k in ("source-address", "source-address6"):
-            if blk.settings.get(k, "").strip('"') == "all":
+            val = blk.settings.get(k, "").strip('"')
+            if not val:
+                continue
+            if val == "all":
                 add("Portail SSL-VPN ouvert à toutes les IP sources (surface d'exposition)",
                     "moyen", f"vpn ssl settings {k}=all (aucune restriction d'origine ; "
                              f"c'est ce qui rend le portail atteignable par les campagnes "
                              f"de devinage de comptes)")
+            elif ips_vpn_echec:
+                n = len(ips_vpn_echec)
+                ex = ", ".join(sorted(ips_vpn_echec)[:3])
+                add("Restriction d'origine SSL-VPN en place mais contournée — SUSPICION",
+                    "moyen", f"vpn ssl settings {k}={val} : {n} IP ont malgré tout atteint le "
+                             f"portail (échecs de login SSL-VPN dans les logs) — la restriction "
+                             f"ne les couvre pas (ex. {ex}). Le contenu de l'objet « {val} » "
+                             f"n'est pas résolu ici, et la DATE de mise en place de la "
+                             f"restriction n'est pas dans le .conf (des échecs antérieurs "
+                             f"peuvent être comptés) : à vérifier sur le boîtier.")
 
     # --- C6 : Config sauvegardée par un compte hors référentiel ---
     saver = parse_header_user(text)
@@ -209,17 +225,27 @@ def audit_config(text: str, cfg: dict, source_file: str = "", boitier: str = "in
     return findings
 
 
-def audit_files(conf_paths, cfg: dict, boitier_map=None, comptes_vises=()) -> pd.DataFrame:
+def audit_files(conf_paths, cfg: dict, boitier_map=None, comptes_vises=(),
+                ips_vpn_echec=None) -> pd.DataFrame:
     """Audite plusieurs fichiers .conf -> DataFrame triée par sévérité.
-    boitier_map(source_file) -> boitier (optionnel)."""
+    boitier_map(source_file) -> boitier (optionnel).
+    ips_vpn_echec : {boitier: {ip, ...}} des IP ayant échoué au login SSL-VPN (C9) ;
+    None = pas de logs -> la règle reste silencieuse (jamais d'IP supposée)."""
     from pathlib import Path
     rows = []
     for p in conf_paths:
         p = Path(p)
         text = p.read_text(errors="replace")
         boitier = boitier_map(p.name) if boitier_map else "inconnu"
+        # IP du boîtier concerné ; boîtier indéterminé -> union (ne rien attribuer à tort
+        # serait pire que d'élargir : le détail dit d'où viennent les IP).
+        ips = None
+        if ips_vpn_echec:
+            ips = ips_vpn_echec.get(boitier)
+            if ips is None:
+                ips = set().union(*ips_vpn_echec.values()) if boitier == "inconnu" else set()
         rows.extend(audit_config(text, cfg, source_file=p.name, boitier=boitier,
-                                 comptes_vises=comptes_vises))
+                                 comptes_vises=comptes_vises, ips_vpn_echec=ips))
     cols = ["boitier", "source_file", "severite", "regle", "detail"]
     if not rows:
         return pd.DataFrame(columns=cols)
