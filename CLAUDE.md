@@ -164,6 +164,10 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
 6. Téléchargement de config via GUI → moyen ; de logs → faible.
 7. Automation déclenchée → info (l'event log ne donne pas l'action-type ; vérifier en config).
 8. Trafic sortant du boîtier (traffic/local) vers destination non listée → moyen.
+   **La source doit être une interface DÉCLARÉE du boîtier** (`wan`/`mgmt`) : `traffic/local`
+   porte les DEUX sens, et sans cette contrainte tout le trafic entrant était libellé
+   « sortant du boîtier » (mesuré : 3 948 des 4 412 événements avaient le WAN en `dstip`).
+   Boîtier non déclaré → règle silencieuse (aucune portée devinée).
    Exclusions automatiques : IP WAN propres des boîtiers, `destinations_legitimes`
    (IP **ou CIDR**), et **toutes les plages Fortinet** (FortiGuard/FortiCloud/FortiSASE)
    par DEUX mécanismes complémentaires : (A) fichier statique `fortinet_ranges_file`
@@ -291,7 +295,7 @@ externe » ne s'applique qu'aux accès **admin**.
 - **Inconnu** : tout autre type → parsing générique + marquage "(NON RECONNU)".
 
 ## État vérifié (tests réellement passés)
-- **Suite pytest : 305 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
+- **Suite pytest : 310 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
 - **Comparaison config** vérifiée sur vrais .conf : 127 écarts T1↔T2 ; attribution réelle
   (ex. « adminB modifié par adminA le 2026-06-22 11:26 ») ; hashs masqués.
 - **Rapport de synthèse** vérifié sur vrai T1 : relie GUI exposée WAN ↔ 128 422 échecs de login
@@ -374,6 +378,18 @@ les types inconnus rencontrés. `guide_markdown(None)` omet la ligne « dans cet
 **Garde-fou de libellé** : « Inutile » = *sans effet sur CETTE analyse*, jamais
 « à désactiver dans FortiCloud ».
 
+
+## Cohérence référentiel ↔ logs (`validate.coherence_referentiel`)
+Avertissement en tête de synthèse, **jamais bloquant** : une IP `boitiers.*.wan|mgmt`
+déclarée mais absente de TOUS les logs est signalée, et l'outil nomme l'IP qui, elle, se
+comporte comme une interface du boîtier — seule IP présente des **deux côtés** de
+`traffic/local` (≥ 10 fois chacun), classée EXTERNE et non déjà déclarée. Libellé en
+question, jamais en conclusion (« à vérifier »), avec la conséquence : tant que ce n'est
+pas corrigé, l'IP est traitée comme externe (acteurs, géo, réputation).
+**Cas réel qui l'a motivé** : analyse lancée avec le `config.yaml` anonymisé
+(`wan: 203.0.113.1`) sur de vrais logs → le pare-feu lui-même (94.127.15.189) arrivait en
+tête des « acteurs à investiguer ». Aucun candidat trouvé → mention franche « l'export ne
+couvre peut-être simplement pas ce boîtier ». Stocké dans `meta["ref_coherence"]`.
 
 ## Limites connues (documentées, à ne pas masquer)
 - **Mémoire (P5 phase 1+2 faite)** : parsing colonnaire + frame d'analyse restreint à

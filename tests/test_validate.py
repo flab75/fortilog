@@ -144,3 +144,48 @@ def test_acteurs_et_timeline_invalides(cfg):
     assert any("acteurs.poids.critique" in e for e in errors)
     assert any("timeline.severite_min" in e for e in errors)
     assert any("timeline.max_par_groupe" in e for e in errors)
+
+
+# --- Cohérence référentiel ↔ logs (WAN déclaré introuvable) ---
+
+def _full(rows):
+    import pandas as pd
+    return pd.DataFrame(rows, columns=["type", "subtype", "srcip", "dstip"])
+
+
+_CFG_COH = {"boitiers": {"T1": {"wan": "203.0.113.1", "mgmt": "10.10.1.1"}},
+            "plages_internes": ["10.10.0.0/16"]}
+
+
+def test_coherence_ok_quand_le_wan_declare_est_dans_les_logs():
+    from fortilog.validate import coherence_referentiel
+    full = _full([("traffic", "local", "203.0.113.1", "8.8.8.8")] * 3
+                 + [("traffic", "local", "10.10.1.1", "8.8.4.4")] * 3)
+    assert coherence_referentiel(full, _CFG_COH) == []
+
+
+def test_coherence_nomme_l_ip_qui_se_comporte_comme_le_boitier():
+    from fortilog.validate import coherence_referentiel
+    rows = [("traffic", "local", "94.127.15.189", "1.2.3.4")] * 12 \
+        + [("traffic", "local", "5.6.7.8", "94.127.15.189")] * 12 \
+        + [("traffic", "local", "10.10.1.1", "9.9.9.9")] * 12
+    msgs = coherence_referentiel(_full(rows), _CFG_COH)
+    assert msgs and "203.0.113.1" in msgs[0] and "10.10.1.1" not in msgs[0]
+    assert any("94.127.15.189" in m and "à vérifier" in m for m in msgs)
+    # jamais une conclusion : l'IP interne 10.10.1.1 n'est pas proposée comme candidate
+    assert not any("10.10.1.1 se comporte" in m for m in msgs)
+
+
+def test_coherence_absence_franche_quand_aucun_candidat():
+    from fortilog.validate import coherence_referentiel
+    rows = [("event", "system", "203.0.113.9", "")] * 5
+    msgs = coherence_referentiel(_full(rows), _CFG_COH)
+    assert any("ne se comporte comme une interface" in m for m in msgs)
+
+
+def test_coherence_silencieuse_sans_boitier_ou_sans_logs():
+    import pandas as pd
+    from fortilog.validate import coherence_referentiel
+    assert coherence_referentiel(_full([]), _CFG_COH) == []
+    assert coherence_referentiel(_full([("traffic", "local", "1.1.1.1", "2.2.2.2")]),
+                                 {"boitiers": {}}) == []

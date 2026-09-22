@@ -395,3 +395,56 @@ def validate_config(cfg: dict) -> list[str]:
                     errors.append(f"rapport.max_constats : '{mc}' n'est pas un entier valide")
 
     return errors
+
+
+def coherence_referentiel(full, cfg, min_occ: int = 10) -> list[str]:
+    """Le référentiel décrit-il bien CES logs ? Avertissements, jamais bloquant.
+
+    Motivation (cas réel) : une analyse lancée avec le `config.yaml` anonymisé
+    (`wan: 203.0.113.1`) sur de vrais logs → l'IP WAN réelle du pare-feu est inconnue,
+    donc classée EXTERNE, absente des exclusions d'infrastructure, et le boîtier
+    lui-même finit en tête des « acteurs à investiguer ».
+
+    Heuristique, volontairement étroite : sur `traffic/local`, une interface de boîtier
+    est la seule IP présente des DEUX côtés (`srcip` ET `dstip`, ≥ `min_occ` chacun).
+    On ne conclut pas — on pose la question et on nomme l'IP à vérifier.
+    """
+    from . import geo
+    from .common import str_col
+
+    out: list[str] = []
+    boitiers = cfg.get("boitiers") or {}
+    declarees = {str(b.get(k)) for b in boitiers.values() for k in ("wan", "mgmt")
+                 if b.get(k)}
+    if full is None or full.empty or not declarees:
+        return out
+
+    src, dst = str_col(full, "srcip"), str_col(full, "dstip")
+    vues = set(src[src.ne("")].unique()) | set(dst[dst.ne("")].unique())
+    absentes = sorted(declarees - vues)
+    if not absentes:
+        return out
+
+    loc = str_col(full, "type").eq("traffic") & str_col(full, "subtype").eq("local")
+    ns, nd = src[loc].value_counts(), dst[loc].value_counts()
+    nets = geo._nets(cfg)
+    candidats = [ip for ip in (set(ns.index) & set(nd.index)) - declarees
+                 if ip and ns[ip] >= min_occ and nd[ip] >= min_occ
+                 and geo.classify_scope(ip, nets) == geo.EXTERNE]
+    candidats.sort(key=lambda ip: -(int(ns[ip]) + int(nd[ip])))
+
+    out.append("⚠ Référentiel : " + ", ".join(absentes)
+               + (" est déclarée comme interface de boîtier mais n'apparaît"
+                  if len(absentes) == 1 else
+                  " sont déclarées comme interfaces de boîtier mais n'apparaissent")
+               + " dans aucun log.")
+    for ip in candidats[:3]:
+        out.append(f"  {ip} se comporte comme une interface du boîtier "
+                   f"(vue {int(ns[ip])} fois en source et {int(nd[ip])} fois en destination "
+                   "sur traffic/local) — le référentiel ne correspond probablement pas à ces "
+                   "logs, à vérifier. Tant qu'il n'est pas corrigé, cette IP est traitée comme "
+                   "externe (classement des acteurs, géo, réputation).")
+    if not candidats:
+        out.append("  Aucune autre IP ne se comporte comme une interface du boîtier dans ces "
+                   "logs — l'export ne couvre peut-être simplement pas ce boîtier.")
+    return out

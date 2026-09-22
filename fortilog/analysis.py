@@ -108,6 +108,12 @@ def build_analysis(tables, meta, cfg) -> str:
                  f"{sv.get('n_nouveaux', 0)} NOUVEAU(X) depuis l'analyse du {dp}.**{acq}")
         L.append("")
 
+    # Cohérence du référentiel : un WAN/mgmt déclaré absent de tous les logs fausse
+    # tout l'aval (portée, exclusion d'infrastructure, classement des acteurs).
+    if meta.get("ref_coherence"):
+        L.extend(meta["ref_coherence"])
+        L.append("")
+
     # Fraîcheur des bases hors-ligne (géo/ASN/réputation) : jamais bloquant
     for b in meta.get("bases") or []:
         if b["perime"]:

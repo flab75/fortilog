@@ -198,7 +198,14 @@ def run_detection(df: pd.DataFrame, cfg: dict, enricher=None, comptes_vus_prev=N
          "Automation déclenchée (vérifier action-type en config)", "info", pd.Series("", index=df.index))
 
     # 8. Réseau : sortie boîtier non listée
-    net_out = typ.eq("traffic") & sub.eq("local") & ~dstip.map(intern).fillna(False) \
+    # `traffic/local` porte les DEUX sens (vers le boîtier ET depuis lui) : sans la
+    # contrainte sur srcip, tout le trafic ENTRANT était libellé « sortant du boîtier »
+    # (mesuré : 3 948 des 4 412 événements avaient le WAN du boîtier en dstip). La règle
+    # n'a de sens que si la source EST une interface déclarée du boîtier ; référentiel
+    # sans boîtier déclaré → règle silencieuse (jamais de portée devinée).
+    boitier_ips = {ip for ip in (wan_ips | mgmt_ips) if ip and ip != "None"}
+    net_out = typ.eq("traffic") & sub.eq("local") & srcip.isin(boitier_ips) \
+        & ~dstip.map(intern).fillna(False) \
         & ~dstip.isin(legit_dst) & ~dstip.isin(wan_ips) & ~dstip.isin(fortinet_dst) \
         & ~dstip.map(dst_legit_net).fillna(False) & dstip.ne("")
     flag(net_out, "Trafic sortant du boîtier vers destination non listée", "moyen", ("dstip=" + dstip))

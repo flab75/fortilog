@@ -144,6 +144,14 @@ def test_r8_own_wan_ip_not_flagged(cfg):
     assert sortant.empty, f"Faux positif R8 sur WAN propre : {sortant['detail'].tolist()}"
 
 
+def test_r8_trafic_entrant_pas_libelle_sortant(cfg):
+    """`traffic/local` porte les deux sens : une IP externe frappant le WAN du boîtier,
+    ou une source LAN IPv6 link-local, ne sont PAS du « trafic sortant du boîtier »."""
+    ev = detect_on_fixture("traffic_local_entrant.log", cfg)
+    sortant = ev[ev["regle"].str.contains("sortant", na=False)]
+    assert sortant.empty, f"Entrant libellé sortant : {sortant['detail'].tolist()}"
+
+
 def _detect_fortinet_fixture(cfg, enricher=None):
     from fortilog.main import load_file
     from fortilog import normalize, detect

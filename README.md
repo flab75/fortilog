@@ -159,7 +159,10 @@ au-delà de `timeline.max_par_groupe` (défaut 3) — le compte exact est toujou
 - Nom de compte **potentiellement voyou** (motif jetable/mail anonyme — SUSPICION).
 - **Exfiltration** : téléchargement de config/logs via GUI.
 - **Automation déclenchée** → info (l'event log ne donne pas l'action-type : vérifier en config).
-- **Réseau** : sortie boîtier vers destination non listée (moyen).
+- **Réseau** : sortie boîtier vers destination non listée (moyen) — uniquement si
+  `srcip` est une interface DÉCLARÉE du boîtier (`boitiers.*.wan|mgmt`). `traffic/local`
+  porte les deux sens : sans cette contrainte, tout l'entrant était libellé « sortant ».
+  Référentiel sans boîtier déclaré → règle silencieuse.
 - **Réseau** : accès depuis pool VPN → interface de management (élevé). Le pool est
   configurable via `pool_vpn` (un CIDR ou une liste ; défaut `10.212.134.0/24` si absent).
 - **UTM/app-ctrl** : application bloquée par FortiGate (élevé) ; `apprisk="critical"` non bloquée
@@ -530,7 +533,7 @@ JSON lisible et éditable.
 
 ## Tests
 
-Suite pytest versionnée : **305 tests rapides** + **10 tests sur vrais logs** (@slow) = **315 au total**.
+Suite pytest versionnée : **310 tests rapides** + **10 tests sur vrais logs** (@slow) = **320 au total**.
 
 ```bash
 # Tests rapides (fixtures synthétiques)

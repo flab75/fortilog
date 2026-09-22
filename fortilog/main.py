@@ -12,6 +12,7 @@ import yaml
 from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats, vpn, logguide, blocages, blocklist, empreintes, reseau_stats
 from .common import SEV_ORDER, FAIL_LOGDESC, str_col
 from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
+from . import validate
 from .validate import validate_config
 
 
@@ -153,6 +154,9 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
     full["boitier"] = normalize.assign_boitier(full, cfg.get("boitiers", {}), cfg.get("fichiers_boitier"))
     full = normalize.deduplicate(full)
 
+    # Garde-fou : le référentiel décrit-il bien CES logs ? (WAN déclaré introuvable)
+    ref_coherence = validate.coherence_referentiel(full, cfg)
+
     # D1 — fenêtre réellement couverte par chaque fichier. Sans elle, une absence
     # d'événement se lit à tort comme un succès (« le log s'arrête à 13:34, la tentative
     # suivante n'y est simplement pas encore »).
@@ -279,7 +283,7 @@ def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet
             "n_configs": len(conf_files), "n_config_changes": len(config_diff),
             "config_ref": Path(ref_conf).name if ref_conf else None,
             "comportement_vus_courant": comportement_vus_courant,
-            "vpn_stats": vpn_stats}
+            "vpn_stats": vpn_stats, "ref_coherence": ref_coherence}
 
     # Acteurs à risque : sur les événements ENRICHIS (géo/réputation), avant slim.
     tables["acteurs"] = actors.build_actors(events, full, meta, cfg)
