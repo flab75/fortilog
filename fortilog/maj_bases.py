@@ -40,7 +40,7 @@ from pathlib import Path
 
 
 from . import fetch_fortinet_ranges
-from .common import load_config, default_config_path
+from .common import load_config, default_config_path, ssl_context
 
 GEO_URL = "https://download.db-ip.com/free/dbip-country-lite-{mois}.csv.gz"
 ASN_URL = "https://iptoasn.com/data/ip2asn-v4.tsv.gz"
@@ -97,7 +97,7 @@ def compter_lignes_valides(path: Path, kind: str) -> int:
 def _telecharger(url: str, dest: Path, timeout: int) -> None:
     """Télécharge `url` vers `dest` (décompresse si .gz). Lève en cas d'erreur HTTP."""
     req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with urllib.request.urlopen(req, timeout=timeout, context=ssl_context()) as resp:
         src = gzip.GzipFile(fileobj=resp) if url.endswith(".gz") else resp
         with open(dest, "wb") as out:
             shutil.copyfileobj(src, out, 1 << 20)

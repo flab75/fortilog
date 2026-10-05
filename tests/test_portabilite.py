@@ -46,3 +46,12 @@ def test_config_par_defaut(tmp_path, monkeypatch):
 def test_config_du_projet_pointe_dans_le_projet():
     cfg = load_config(PROJECT_DIR / "config.yaml")
     assert cfg["geo_db_path"].startswith(str(PROJECT_DIR))
+
+
+def test_ssl_context_utilise_certifi():
+    import certifi
+    from fortilog.common import ssl_context
+    ctx = ssl_context()
+    assert ctx.verify_mode.name == "CERT_REQUIRED"
+    assert ctx.cert_store_stats()["x509_ca"] > 0       # magasin non vide
+    assert certifi.where()

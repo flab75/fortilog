@@ -158,7 +158,7 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
   projet. Démarrage : `./fortilog.sh` (venv `.venv/` local auto-créé, Python ≥ 3.11 ; ancien
   `run_ui.sh` imposait `/Users/flab/miniforge3` → alias). Vérifié le 2026-10-05 : copie du
   projet dans un chemin avec espace, lancée depuis un autre cwd sous Python 3.11 → venv créé,
-  bases trouvées, analyse OK, UI HTTP 200, 338 tests verts. Ne pas réintroduire de syntaxe
+  bases trouvées, analyse OK, UI HTTP 200, 339 tests verts. Ne pas réintroduire de syntaxe
   3.12+ (bug rencontré : backslash dans une f-string de `logguide.py`).
 - **API stable :** `fortilog.main.run(input_dir, config_path, output_dir) -> (tables, meta)`.
   Toute UI doit s'appuyer dessus, pas réimplémenter la logique.
@@ -166,7 +166,7 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
   vérifiées sur les exports réels (boîtiers par IP, admins connus, utilisateurs
   VPN/locaux, groupes VPN, plages internes, destinations légitimes, motifs de
   comptes suspects, paramètres de rafale).
-- **Dépendances :** pandas, xlsxwriter, pyyaml, openpyxl.
+- **Dépendances :** pandas, xlsxwriter, pyyaml, openpyxl, certifi (TLS de `maj_bases`).
 - **E/S texte : toujours `encoding="utf-8"`** (`open`, `read_text`, `write_text`). Sous Windows
   le défaut est cp1252 : la CI Windows a échoué sur un rapport UTF-8 relu sans encodage
   (« à » → « � »). Garde-fou : la CI tourne avec `PYTHONWARNDEFAULTENCODING=1` et
@@ -316,7 +316,7 @@ externe » ne s'applique qu'aux accès **admin**.
 - **Inconnu** : tout autre type → parsing générique + marquage "(NON RECONNU)".
 
 ## État vérifié (tests réellement passés)
-- **Suite pytest : 338 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
+- **Suite pytest : 339 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
 - **Comparaison config** vérifiée sur vrais .conf : 127 écarts T1↔T2 ; attribution réelle
   (ex. « adminB modifié par adminA le 2026-06-22 11:26 ») ; hashs masqués.
 - **Rapport de synthèse** vérifié sur vrai T1 : relie GUI exposée WAN ↔ 128 422 échecs de login
@@ -412,7 +412,9 @@ récent ; mois en place lu dans le sidecar `<base>.maj.json`, sinon mtime), Fort
 (réutilise `fetch_fortinet_ranges`, fichier versionné → apparaît dans `git status`).
 Garde-fous : temporaire dans le même dossier → contrôle format + `MIN_LIGNES` → `os.replace`
 (droits conservés — bug rencontré : `mkstemp` laissait les bases en 0600). Une page HTML
-d'erreur n'écrase jamais une base. Vérifié en réel le 2026-10-05 : DB-IP 2026-10
+d'erreur n'écrase jamais une base. TLS via `common.ssl_context` (magasin `certifi`, dépendance
+explicite) — bug rencontré : le Python python.org de macOS n'a aucun certificat racine →
+`CERTIFICATE_VERIFY_FAILED` sur tout téléchargement ; vérifié corrigé sous 3.11 (`--force`). Vérifié en réel le 2026-10-05 : DB-IP 2026-10
 (710 834 l.), iptoasn (538 650 l.), FireHOL du 04/10 (4 643 l.) en 3,4 s ; 2e lancement :
 tout « à jour », aucun téléchargement. Constat : 85.11.187.120 passe de GB/AS60068 (base de
 juin) à NO/AS211443 — la géo d'une IP change avec la base (d'où la trace dans « Referentiel »).

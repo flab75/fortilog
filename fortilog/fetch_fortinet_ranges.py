@@ -23,6 +23,8 @@ import sys
 import urllib.request
 from pathlib import Path
 
+from .common import ssl_context
+
 ARIN_NETS_URL = "https://whois.arin.net/rest/org/{org}/nets"
 DEFAULT_ORG = "FTC-58"          # Fortinet Inc.
 DEFAULT_OUT = "data/fortinet_ranges.netset"
@@ -33,7 +35,7 @@ def fetch_netrefs(org: str, timeout: int = 30) -> list[dict]:
     url = ARIN_NETS_URL.format(org=org)
     req = urllib.request.Request(url, headers={"Accept": "application/json",
                                                "User-Agent": "fortilog/fetch-fortinet-ranges"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with urllib.request.urlopen(req, timeout=timeout, context=ssl_context()) as resp:
         data = json.load(resp)
     refs = data.get("nets", {}).get("netRef", [])
     if isinstance(refs, dict):   # ARIN renvoie un objet seul s'il n'y a qu'un bloc

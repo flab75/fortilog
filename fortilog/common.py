@@ -45,6 +45,19 @@ def load_config(config_path) -> dict:
     return resolve_paths(yaml.safe_load(p.read_text(encoding="utf-8")) or {}, p.resolve().parent)
 
 
+def ssl_context():
+    """Contexte TLS des téléchargements (maj_bases, ARIN) : magasin `certifi` s'il est
+    installé, sinon celui du système. Indispensable avec le Python de python.org sur macOS,
+    livré SANS certificats racine (bug rencontré : CERTIFICATE_VERIFY_FAILED sur tout
+    téléchargement tant que « Install Certificates.command » n'a pas été lancé)."""
+    import ssl
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
 def default_config_path() -> str:
     """`config.yaml` du dossier courant s'il existe, sinon celui du projet — le CLI
     fonctionne ainsi lancé depuis n'importe quel dossier."""
