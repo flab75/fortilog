@@ -3,7 +3,7 @@
 # invisibles d'un filtre ASN. Données publiques ARIN (license-clean).
 # Régénérer : python -m fortilog.fetch_fortinet_ranges --org FTC-58
 # Source : https://whois.arin.net/rest/org/FTC-58/nets
-# Généré le : 2026-06-29 — 26 plage(s).
+# Généré le : 2026-10-05 — 27 plage(s).
 23.249.48.0/20
 66.35.16.0/20
 66.103.16.0/20
@@ -17,6 +17,7 @@
 148.230.32.0/19
 159.48.160.0/19
 160.223.160.0/20
+168.100.6.0/23
 173.243.128.0/20
 176.23.128.0/19
 189.25.0.0/16
