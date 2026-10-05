@@ -144,12 +144,24 @@ utm_descriptif:
 # age_max_jours (mtime), avertissement en tête du rapport (JAMAIS bloquant).
 bases:
   age_max_jours: 90
+  # Mise à jour (seule étape RÉSEAU, cf. fortilog/maj_bases.py) : automatique au démarrage
+  # de l'UI Streamlit et avant chaque analyse UI ; en CLI, opt-in `--maj-bases` ou
+  # `python -m fortilog.maj_bases`. Une base n'est retéléchargée que si elle dépasse le
+  # rythme de son producteur ; échec réseau -> base en place conservée (jamais bloquant).
+  # DB-IP (pays) est mensuel : rafraîchi dès que le fichier du mois est publié.
+  maj:
+    reputation_jours: 1     # listes ayant une `url` (FireHOL : quotidien)
+    asn_jours: 7            # iptoasn (quotidien, 30 Mo, l'ASN bouge peu)
+    fortinet_jours: 180     # plages Fortinet via ARIN (rare)
+    timeout_s: 60
 
 # Listes de réputation IP HORS-LIGNE (threat intel, optionnel). Format : un CIDR ou
 # une IP par ligne, '#' = commentaire (FireHOL/.netset/.ipset). License-clean uniquement.
+# `url` (optionnel) : source de mise à jour automatique ; sans `url`, liste jamais rafraîchie.
 # Une présence en liste est un SIGNAL FORT mais reste à confirmer (faux positifs possibles).
 reputation_lists:
-  - { nom: "FireHOL L1", path: data/geo/firehol_level1.netset }
+  - { nom: "FireHOL L1", path: data/geo/firehol_level1.netset,
+      url: "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset" }
   # - { nom: "abuse.ch FeodoTracker", path: data/geo/feodo.ipset }
 
 # Liste blanche contrôle applicatif (UTM/app-ctrl) : hostnames à ne pas signaler.

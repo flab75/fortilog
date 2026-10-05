@@ -1,7 +1,54 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Constantes et petits helpers partagés entre modules (évite la duplication)."""
 from __future__ import annotations
+import copy
+from pathlib import Path
+
 import pandas as pd
+import yaml
+
+# Dossier du projet (celui qui contient config.yaml, data/, app.py).
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+
+# Clés du config.yaml désignant un fichier local (résolues par resolve_paths).
+PATH_KEYS = ("geo_db_path", "asn_db_path", "fortinet_ranges_file")
+
+
+def resolve_paths(cfg: dict, base_dir) -> dict:
+    """Copie de `cfg` où chaque chemin RELATIF de fichier de base (géo, ASN, plages
+    Fortinet, listes de réputation) est rendu absolu par rapport à `base_dir` (`~` est
+    développé). C'est ce qui rend l'outil indépendant du dossier courant : un config
+    `data/geo/x.csv` désigne toujours le fichier à côté du config, d'où qu'on lance."""
+    out = copy.deepcopy(cfg or {})
+    base = Path(base_dir)
+
+    def _abs(p):
+        q = Path(str(p)).expanduser()
+        return str(q if q.is_absolute() else (base / q).resolve())
+
+    for k in PATH_KEYS:
+        if out.get(k):
+            out[k] = _abs(out[k])
+    rl = out.get("reputation_lists")
+    if isinstance(rl, list):
+        for i, e in enumerate(rl):
+            if isinstance(e, dict) and e.get("path"):
+                e["path"] = _abs(e["path"])
+            elif isinstance(e, str) and e:
+                rl[i] = _abs(e)
+    return out
+
+
+def load_config(config_path) -> dict:
+    """Charge un config.yaml et résout ses chemins relatifs par rapport à SON dossier."""
+    p = Path(config_path)
+    return resolve_paths(yaml.safe_load(p.read_text(encoding="utf-8")) or {}, p.resolve().parent)
+
+
+def default_config_path() -> str:
+    """`config.yaml` du dossier courant s'il existe, sinon celui du projet — le CLI
+    fonctionne ainsi lancé depuis n'importe quel dossier."""
+    return "config.yaml" if Path("config.yaml").exists() else str(PROJECT_DIR / "config.yaml")
 
 # Ordre de sévérité (rang croissant) — sert au tri/au classement des constats.
 SEV_ORDER = {"info": 0, "faible": 1, "moyen": 2, "eleve": 3, "critique": 4}

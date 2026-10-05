@@ -23,8 +23,10 @@ fortilog/
 ├── README.md
 ├── pytest.ini       # config pytest (mark slow)
 ├── app.py           # UI Streamlit (streamlit run app.py) — s'appuie sur fortilog.main.run()
+├── fortilog.sh      # lanceur PORTABLE : crée .venv/ au 1er lancement ; ui | analyse | maj-bases | installer | tests
 ├── fortilog/
-│   ├── common.py    # constantes/helpers partagés : SEV_ORDER, CFG_ACCOUNT_PATHS, str_col
+│   ├── common.py    # constantes/helpers partagés : SEV_ORDER, CFG_ACCOUNT_PATHS, str_col,
+│   │                #   load_config/resolve_paths (chemins relatifs au dossier du config)
 │   ├── parse.py     # parse_line : clé=valeur, valeurs quotées + échappements Fortinet (\" \\)
 │   ├── ingest.py    # list_log_files + detect_type ; load_file (parsing colonnaire,
 │   │                #   ANALYSIS_COLS) + load_columns_for_rows (2e passe colonnes d'affichage)
@@ -37,6 +39,7 @@ fortilog/
 │   ├── confdiff.py  # comparaison 2 .conf (ajout/suppr/modif) + attribution qui/quand via logs ; CLI
 │   ├── confgen.py   # génère un config.yaml (BROUILLON) depuis des .conf (référentiel dérivé) ; CLI
 │   ├── fetch_fortinet_ranges.py # GÉNÉRATION (réseau) : plages IP Fortinet via ARIN -> .netset ; CLI
+│   ├── maj_bases.py # MAJ (réseau) des bases géo/ASN/réputation/Fortinet périmées ; CLI
 │   ├── blocages.py  # build_blocages : efficacité des blocages local-in (descriptif)
 │   ├── blocklist.py # grappes d'IP candidates à un blocage (/24) + BROUILLON CLI FortiGate
 │   ├── empreintes.py # empreinte de dictionnaire + cadence par IP (descriptif)
@@ -65,6 +68,8 @@ fortilog/
     ├── test_blocklist.py # grappes candidates au blocage (critères, /24, garde-fou, CLI)
     ├── test_empreintes.py # empreinte de dictionnaire + cadence (C1/C2)
     ├── test_reseau_stats.py # bruit réseau entrant : IPsec phase 1, ICMP (E1/E2)
+    ├── test_portabilite.py # chemins résolus contre le dossier du config, pas le cwd
+    ├── test_maj_bases.py # MAJ des bases : péremption, atomicité, échec réseau (réseau simulé)
     ├── test_vpn.py      # encart VPN : appariement des tunnels, volumes, bruit TLS, guide des logs
     └── test_integration.py # scénario compromission + bénin + vrais logs (@slow)
 ```
@@ -145,6 +150,16 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
 
 ## Conventions
 - **Lancement CLI :** `python -m fortilog.main --input ./logs --config config.yaml --output ./rapport`.
+- **Portabilité — NON NÉGOCIABLE** : l'outil fonctionne là où le dossier est posé. Aucun
+  chemin propre à une machine dans le code, les scripts ou les configs. Tout config se charge
+  via `common.load_config` : les chemins relatifs de fichiers (`PATH_KEYS` + `reputation_lists`)
+  sont résolus contre le **dossier du config** (un config déposé dans l'UI est résolu contre le
+  projet avant écriture en temporaire). `--config` absent → `./config.yaml` sinon celui du
+  projet. Démarrage : `./fortilog.sh` (venv `.venv/` local auto-créé, Python ≥ 3.11 ; ancien
+  `run_ui.sh` imposait `/Users/flab/miniforge3` → alias). Vérifié le 2026-10-05 : copie du
+  projet dans un chemin avec espace, lancée depuis un autre cwd sous Python 3.11 → venv créé,
+  bases trouvées, analyse OK, UI HTTP 200, 338 tests verts. Ne pas réintroduire de syntaxe
+  3.12+ (bug rencontré : backslash dans une f-string de `logguide.py`).
 - **API stable :** `fortilog.main.run(input_dir, config_path, output_dir) -> (tables, meta)`.
   Toute UI doit s'appuyer dessus, pas réimplémenter la logique.
 - **Référentiel = `config.yaml`**, jamais en dur dans le code. Valeurs actuelles
@@ -240,6 +255,7 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
 
 ## Enrichissement géo/ASN (`geo.py`, P6.1)
 - **100 % hors-ligne**, aucune requête réseau, aucune dépendance ajoutée (csv/bisect/ipaddress).
+  L'ANALYSE ne fait aucune requête ; seule l'étape distincte `maj_bases` (ci-dessous) télécharge.
 - **Portée** (`srcip_portee` : interne/externe/réservé) calculée SANS base, depuis `plages_internes`.
 - **Géo/ASN** (`srcip_pays`/`srcip_asn`/`srcip_org`) seulement si bases locales fournies via
   `config.yaml` (`geo_db_path` = DB-IP Lite Country CSV ; `asn_db_path` = iptoasn ip2asn-v4.tsv).
@@ -300,7 +316,7 @@ externe » ne s'applique qu'aux accès **admin**.
 - **Inconnu** : tout autre type → parsing générique + marquage "(NON RECONNU)".
 
 ## État vérifié (tests réellement passés)
-- **Suite pytest : 310 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
+- **Suite pytest : 338 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
 - **Comparaison config** vérifiée sur vrais .conf : 127 écarts T1↔T2 ; attribution réelle
   (ex. « adminB modifié par adminA le 2026-06-22 11:26 ») ; hashs masqués.
 - **Rapport de synthèse** vérifié sur vrai T1 : relie GUI exposée WAN ↔ 128 422 échecs de login
@@ -383,6 +399,23 @@ les types inconnus rencontrés. `guide_markdown(None)` omet la ligne « dans cet
 **Garde-fou de libellé** : « Inutile » = *sans effet sur CETTE analyse*, jamais
 « à désactiver dans FortiCloud ».
 
+
+## Mise à jour des bases (`maj_bases.py`)
+`mettre_a_jour(cfg, force=False) -> [{nom, path, statut, detail}]`, statut ∈ `à jour |
+mise à jour | échec | sans source` ; **ne lève jamais**. Seule étape RÉSEAU de l'outil.
+Déclencheurs : Streamlit au démarrage (`st.cache_resource`, 1×/processus) + avant chaque
+analyse (config effectivement utilisé) + bouton ; CLI opt-in `--maj-bases`
+(`main._maj_bases_cli`, échecs sur stderr même en `--quiet`) ; `python -m fortilog.maj_bases`.
+Rythme (`bases.maj`) : réputation > 1 j (seulement les entrées ayant une `url`), iptoasn > 7 j,
+DB-IP = fichier du mois courant publié (404 en début de mois → mois précédent s'il est plus
+récent ; mois en place lu dans le sidecar `<base>.maj.json`, sinon mtime), Fortinet > 180 j
+(réutilise `fetch_fortinet_ranges`, fichier versionné → apparaît dans `git status`).
+Garde-fous : temporaire dans le même dossier → contrôle format + `MIN_LIGNES` → `os.replace`
+(droits conservés — bug rencontré : `mkstemp` laissait les bases en 0600). Une page HTML
+d'erreur n'écrase jamais une base. Vérifié en réel le 2026-10-05 : DB-IP 2026-10
+(710 834 l.), iptoasn (538 650 l.), FireHOL du 04/10 (4 643 l.) en 3,4 s ; 2e lancement :
+tout « à jour », aucun téléchargement. Constat : 85.11.187.120 passe de GB/AS60068 (base de
+juin) à NO/AS211443 — la géo d'une IP change avec la base (d'où la trace dans « Referentiel »).
 
 ## Cohérence référentiel ↔ logs (`validate.coherence_referentiel`)
 Avertissement en tête de synthèse, **jamais bloquant** : une IP `boitiers.*.wan|mgmt`

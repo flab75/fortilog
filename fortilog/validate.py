@@ -146,6 +146,10 @@ def validate_config(cfg: dict) -> list[str]:
                 if isinstance(entry, dict):
                     if not entry.get("path"):
                         errors.append(f"reputation_lists[{i}] : clé 'path' requise")
+                    url = entry.get("url")
+                    if url is not None and not (isinstance(url, str)
+                                                and url.startswith(("http://", "https://"))):
+                        errors.append(f"reputation_lists[{i}].url : attendu une URL http(s), reçu {url!r}")
                 elif not isinstance(entry, str):
                     errors.append(f"reputation_lists[{i}] : attendu {{nom, path}} ou un chemin, "
                                   f"reçu {type(entry).__name__}")
@@ -322,6 +326,20 @@ def validate_config(cfg: dict) -> list[str]:
                         errors.append(f"bases.age_max_jours : doit être > 0, reçu {am}")
                 except (ValueError, TypeError):
                     errors.append(f"bases.age_max_jours : '{am}' n'est pas un entier valide")
+            mj = bs.get("maj")
+            if mj is not None:
+                if not isinstance(mj, dict):
+                    errors.append(f"bases.maj : attendu un dictionnaire, reçu {type(mj).__name__}")
+                else:
+                    for k in ("reputation_jours", "asn_jours", "fortinet_jours", "timeout_s"):
+                        v = mj.get(k)
+                        if v is None:
+                            continue
+                        try:
+                            if float(v) <= 0:
+                                errors.append(f"bases.maj.{k} : doit être > 0, reçu {v}")
+                        except (ValueError, TypeError):
+                            errors.append(f"bases.maj.{k} : '{v}' n'est pas un nombre valide")
 
     # Agrégats descriptifs UTM (section optionnelle) : top_n entier > 0
     ud = cfg.get("utm_descriptif")

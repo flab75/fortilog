@@ -1,5 +1,7 @@
 # Bases géo/ASN locales (volumineuses, sous licence, régénérables — cf. docs/PROCEDURE_BASES_GEO.md)
 data/geo/
+# Traçabilité des mises à jour de bases (fortilog.maj_bases)
+*.maj.json
 
 # Python
 __pycache__/
@@ -19,3 +21,6 @@ config.local.yaml
 # Référentiel généré par fortilog.confgen (contient de vraies valeurs)
 config.generated.yaml
 .serena/
+
+# Environnement Python local créé par ./fortilog.sh
+.venv/

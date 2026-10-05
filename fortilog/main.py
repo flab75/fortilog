@@ -7,10 +7,9 @@ import itertools
 import sys
 from pathlib import Path
 import pandas as pd
-import yaml
 
-from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats, vpn, logguide, blocages, blocklist, empreintes, reseau_stats
-from .common import SEV_ORDER, FAIL_LOGDESC, str_col
+from . import ingest, normalize, detect, compare, correlate, report, excel, geo, confaudit, confdiff, analysis, actors, suivi, bases, utm_stats, vpn, logguide, blocages, blocklist, empreintes, reseau_stats, maj_bases
+from .common import SEV_ORDER, FAIL_LOGDESC, str_col, load_config, default_config_path
 from .ingest import TARGET_COLS, load_file  # réexport (API utilisée par les tests/confdiff)
 from . import validate
 from .validate import validate_config
@@ -72,7 +71,7 @@ def _compute_config_diff(ref_conf, conf_files, logs_dir, cfg, boitier_for):
 
 
 def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet=False):
-    cfg = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
+    cfg = load_config(config_path)
     errors = validate_config(cfg)
     if errors:
         msg = "Configuration invalide :\n" + "\n".join(f"  - {e}" for e in errors)
@@ -329,10 +328,24 @@ def _write_tables(tables, dirpath, fmt) -> None:
             df.to_csv(d / f"{nom}.csv", index=False, encoding="utf-8")
 
 
+def _maj_bases_cli(config_path, quiet=False):
+    """`--maj-bases` : mise à jour des bases périmées avant l'analyse. Jamais bloquant —
+    un échec est signalé sur stderr (même en --quiet) et l'analyse part sur les bases en place."""
+    try:
+        res = maj_bases.mettre_a_jour(load_config(config_path))
+    except Exception as e:   # config illisible : run() la signalera proprement
+        print(f"⚠ Mise à jour des bases impossible : {e}", file=sys.stderr)
+        return
+    for r, line in zip(res, maj_bases.resume(res)):
+        if not quiet or r["statut"] == maj_bases.ECHEC:
+            print(line, file=sys.stderr)
+
+
 def main():
     ap = argparse.ArgumentParser(description="Analyseur de logs FortiGate")
     ap.add_argument("--input", required=True, help="dossier des fichiers .log")
-    ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--config", default=None,
+                    help="référentiel (défaut : ./config.yaml, sinon celui du projet)")
     ap.add_argument("--output", default="./rapport")
     ap.add_argument("--ref-conf", dest="ref_conf", default=None,
                     help="config .conf de référence/validée à comparer aux .conf du dossier")
@@ -342,9 +355,15 @@ def main():
                     help="écrit chaque table en <DIR>/<nom>.json (orient=records, dates ISO), en plus des sorties habituelles")
     ap.add_argument("--csv", dest="csv_dir", default=None, metavar="DIR",
                     help="écrit chaque table en <DIR>/<nom>.csv (UTF-8), en plus des sorties habituelles")
+    ap.add_argument("--maj-bases", dest="maj_bases", action="store_true",
+                    help="met à jour les bases géo/ASN/réputation/Fortinet périmées AVANT "
+                         "l'analyse (réseau ; échec -> bases en place conservées)")
     ap.add_argument("--quiet", action="store_true",
                     help="supprime le rapport imprimé et la progression d'ingestion (les fichiers sont toujours écrits)")
     a = ap.parse_args()
+    a.config = a.config or default_config_path()
+    if a.maj_bases:
+        _maj_bases_cli(a.config, a.quiet)
     tables, _ = run(a.input, a.config, a.output, ref_conf=a.ref_conf, etat_path=a.etat, quiet=a.quiet)
     if a.json_dir:
         _write_tables(tables, a.json_dir, "json")

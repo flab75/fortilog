@@ -64,9 +64,27 @@ l'UI Streamlit (section « 🧩 Générer un référentiel »). Renommez ensuite
 
 ## Usage
 
+### Démarrage — lanceur portable `fortilog.sh` (recommandé)
+L'outil fonctionne **là où le dossier est posé** (n'importe quel emplacement, chemins avec
+espaces compris, depuis n'importe quel dossier courant) :
+```bash
+./fortilog.sh                      # UI Streamlit
+./fortilog.sh analyse --input ./logs --output ./rapport [--maj-bases]   # CLI
+./fortilog.sh maj-bases [--force]  # mise à jour des bases géo/ASN/réputation/Fortinet
+./fortilog.sh installer            # (ré)installe l'environnement
+./fortilog.sh tests                # suite pytest rapide
+```
+Au premier lancement, un environnement isolé `.venv/` est créé dans le dossier du projet
+avec un Python ≥ 3.11 trouvé sur la machine (`FORTILOG_PYTHON=/chemin/python` pour en
+imposer un) et les dépendances y sont installées (réseau requis une fois). Dossier déplacé
+ou environnement incomplet → réinstallation automatique. Les chemins relatifs du
+`config.yaml` (`data/geo/…`) sont résolus par rapport au **dossier du fichier de config**,
+jamais du dossier courant ; sans `--config`, le CLI prend `./config.yaml` s'il existe,
+sinon celui du projet. (`run_ui.sh` est conservé comme alias de `./fortilog.sh ui`.)
+
 ### Interface graphique (Streamlit)
 ```bash
-streamlit run app.py
+./fortilog.sh        # ou, dans un environnement déjà prêt : streamlit run app.py
 ```
 Ouvre un navigateur : déposez vos fichiers `.log`, choisissez un `config.yaml`
 optionnel, cliquez **Lancer l'analyse**. Les résultats s'affichent en onglets
@@ -309,6 +327,18 @@ cette analyse**, pas « à supprimer de FortiCloud ».
   peuvent être obsolètes » — et une ligne dédiée dans la feuille **« Referentiel »**.
   L'UI affiche le même rapport (onglet **Rapport**).
 - **Jamais bloquant** : base absente ou vieillie n'interrompt jamais l'analyse.
+
+## Mise à jour automatique des bases (`maj_bases.py`)
+- **Seule étape réseau** de l'outil ; l'analyse elle-même reste hors-ligne.
+- **Streamlit** : au démarrage (1×/processus) et avant chaque analyse ; état + bouton
+  « Vérifier / mettre à jour maintenant » dans la barre latérale.
+- **CLI** : `--maj-bases` (opt-in), ou `python -m fortilog.maj_bases [--force]`.
+- Retéléchargement **seulement si périmée** selon le rythme du producteur (`bases.maj` :
+  `reputation_jours` 1, `asn_jours` 7, `fortinet_jours` 180, DB-IP dès le nouveau mois) ;
+  une liste de réputation n'est rafraîchie que si elle a une clé `url`.
+- **Dégradation honnête** : contrôle du format avant remplacement atomique ; échec réseau ou
+  fichier non conforme → base en place conservée + avertissement, jamais bloquant.
+- Détail : [docs/PROCEDURE_BASES_GEO.md](docs/PROCEDURE_BASES_GEO.md) §6.
 
 ## Bruit réseau entrant (`reseau_stats.py`)
 **Descriptif, aucune sévérité, aucun constat** — même contrat que `utm_stats` : on décrit

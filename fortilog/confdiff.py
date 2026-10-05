@@ -205,10 +205,13 @@ def main():
     ap.add_argument("ok", help="config de référence / validée")
     ap.add_argument("current", help="config actuelle / à vérifier")
     ap.add_argument("--logs", help="dossier de logs pour l'attribution (qui/quand)")
-    ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--config", default=None,
+                    help="référentiel (défaut : ./config.yaml, sinon celui du projet)")
     ap.add_argument("--all", action="store_true", help="toutes les sections (pas seulement sensibles)")
     a = ap.parse_args()
-    cfg = yaml.safe_load(Path(a.config).read_text(encoding="utf-8")) if Path(a.config).exists() else {}
+    from .common import load_config, default_config_path
+    cfg_path = a.config or default_config_path()
+    cfg = load_config(cfg_path) if Path(cfg_path).exists() else {}
     diff, meta = compare(a.ok, a.current, logs_dir=a.logs, cfg=cfg, all_sections=a.all)
     print(f"Référence : {meta['ok_file']} (sauvée par {meta['ok_saved_by'] or '?'})")
     print(f"Actuelle  : {meta['current_file']} (sauvée par {meta['current_saved_by'] or '?'})")

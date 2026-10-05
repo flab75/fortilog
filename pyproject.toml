@@ -41,6 +41,7 @@ fortilog        = "fortilog.main:main"
 fortilog-diff   = "fortilog.confdiff:main"
 fortilog-confgen = "fortilog.confgen:main"
 fortilog-ack    = "fortilog.ack:main"
+fortilog-maj-bases = "fortilog.maj_bases:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

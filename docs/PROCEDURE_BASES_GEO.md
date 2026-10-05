@@ -104,20 +104,34 @@ python -c "from fortilog import geo; e=geo.load_enricher({'geo_db_path':'data/ge
 
 ---
 
-## 6. Mise à jour
+## 6. Mise à jour — automatique (`fortilog/maj_bases.py`)
 
-- **DB-IP pays** : nouvelle version **chaque mois** → re-télécharger en bumpant `AAAA-MM`.
-- **iptoasn ASN** : régénéré **chaque heure** ; un rafraîchissement mensuel suffit pour
-  un usage d'audit (même URL, écrase le fichier).
+Les téléchargements manuels ci-dessus ne servent qu'à la première installation (ou hors
+réseau). Ensuite, la mise à jour est **automatique** :
 
-Un simple script de refresh (à planifier si besoin) :
-```bash
-#!/bin/sh
-cd /path/to/fortilog/data/geo || exit 1
-MOIS=$(date +%Y-%m)
-curl -fL -o dbip-country-lite.csv.gz "https://download.db-ip.com/free/dbip-country-lite-${MOIS}.csv.gz" && gunzip -f dbip-country-lite.csv.gz
-curl -fL -o ip2asn-v4.tsv.gz "https://iptoasn.com/data/ip2asn-v4.tsv.gz" && gunzip -f ip2asn-v4.tsv.gz
-```
+- **UI Streamlit** : vérification au démarrage (une fois par processus) et avant chaque
+  analyse ; état dans la barre latérale (« 🗄️ Bases hors-ligne ») + bouton « Vérifier /
+  mettre à jour maintenant ».
+- **CLI** : opt-in `--maj-bases` (le CLI reste hors-ligne par défaut), ou commande dédiée
+  `python -m fortilog.maj_bases [--config config.yaml] [--force]` / `fortilog-maj-bases`
+  (code retour 1 si une base n'a pas pu être mise à jour).
+
+Une base n'est retéléchargée que si elle dépasse le rythme de son producteur
+(`bases.maj` dans `config.yaml`) :
+
+| Base | Source | Rafraîchie si |
+|---|---|---|
+| DB-IP pays | `dbip-country-lite-AAAA-MM.csv.gz` | le fichier du mois courant est publié (repli : mois précédent s'il est plus récent que le fichier en place) |
+| iptoasn | `https://iptoasn.com/data/ip2asn-v4.tsv.gz` | > `asn_jours` (défaut 7) |
+| Listes de réputation | clé `url` de chaque entrée `reputation_lists` | > `reputation_jours` (défaut 1) ; sans `url` → jamais (« sans source ») |
+| Plages Fortinet | ARIN (`fetch_fortinet_ranges`) | > `fortinet_jours` (défaut 180) |
+
+Garde-fous : téléchargement dans un temporaire, contrôle du format + nombre minimal de
+lignes, remplacement atomique (droits du fichier conservés). Réseau absent, page d'erreur
+ou fichier tronqué → **la base en place est conservée**, l'échec est affiché, l'analyse
+continue. Chaque base téléchargée reçoit un fichier `<base>.maj.json` (source, date) —
+gitignoré. Attention : mettre à jour les bases peut changer le pays/l'ASN/la réputation
+d'une même IP d'une analyse à l'autre (l'âge de chaque base est tracé dans « Referentiel »).
 
 ---
 

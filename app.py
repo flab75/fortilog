@@ -15,8 +15,9 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from fortilog.main import run
-from fortilog import confdiff, confgen, logguide
-from fortilog.common import SEV_ORDER
+from fortilog import confdiff, confgen, logguide, maj_bases
+import yaml
+from fortilog.common import SEV_ORDER, load_config, resolve_paths
 from fortilog.ui_helpers import (
     prepare_events, prepare_metrics, prepare_agg,
     prepare_bursts, prepare_diff, prepare_chains, filter_events, SEV_COLORS,
@@ -61,6 +62,34 @@ st.markdown(
 )
 
 
+# ── Mise à jour des bases hors-ligne (seule étape réseau) ─────────────────────
+
+def _maj_bases(cfg_path):
+    """Met à jour les bases périmées du config donné. Jamais bloquant : config illisible
+    ou réseau absent -> l'analyse part sur les bases en place, l'échec est affiché."""
+    try:
+        return maj_bases.mettre_a_jour(load_config(cfg_path))
+    except Exception as e:
+        return [{"nom": "Bases", "path": str(cfg_path), "statut": maj_bases.ECHEC,
+                 "detail": f"mise à jour impossible : {e}"}]
+
+
+@st.cache_resource(show_spinner=False)
+def _maj_demarrage():
+    """Une fois par processus Streamlit (pas à chaque rerun de la page)."""
+    return _maj_bases(DEFAULT_CONFIG)
+
+
+if "maj_bases" not in st.session_state:
+    with st.spinner("Vérification / mise à jour des bases géo, ASN, réputation, Fortinet…"):
+        st.session_state["maj_bases"] = _maj_demarrage()
+
+
+def _afficher_maj(res):
+    for r, line in zip(res, maj_bases.resume(res)):
+        (st.warning if r["statut"] == maj_bases.ECHEC else st.caption)(line)
+
+
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 
 with st.sidebar:
@@ -74,6 +103,15 @@ with st.sidebar:
         "Si aucun fichier n'est fourni, le `config.yaml` du répertoire du projet "
         "est utilisé."
     )
+    st.divider()
+    _echecs = [r for r in st.session_state["maj_bases"] if r["statut"] == maj_bases.ECHEC]
+    with st.expander("🗄️ Bases hors-ligne" + (" — ⚠ échec de mise à jour" if _echecs else ""),
+                     expanded=bool(_echecs)):
+        _afficher_maj(st.session_state["maj_bases"])
+        if st.button("🔄 Vérifier / mettre à jour maintenant"):
+            with st.spinner("Mise à jour des bases…"):
+                st.session_state["maj_bases"] = _maj_bases(DEFAULT_CONFIG)
+            st.rerun()
     st.divider()
     st.markdown(
         "**Principe :** l'outil **signale et structure** ; "
@@ -141,10 +179,21 @@ if run_btn and (uploaded_files or conf_files_up):
             ref_conf_path.write_bytes(ref_conf_up.getvalue())
         # Résolution du config
         if config_file is not None:
+            # Config déposé : ses chemins relatifs (data/geo/…) désignent les fichiers du
+            # PROJET, pas du dossier temporaire où il est écrit -> résolus contre ROOT.
             cfg_path = input_dir / "_config.yaml"
-            cfg_path.write_bytes(config_file.getvalue())
+            cfg_up = resolve_paths(yaml.safe_load(config_file.getvalue()) or {}, ROOT)
+            cfg_path.write_text(yaml.safe_dump(cfg_up, allow_unicode=True, sort_keys=False))
         else:
             cfg_path = DEFAULT_CONFIG
+
+        # Avant chaque analyse : bases du config EFFECTIVEMENT utilisé (rapide si à jour).
+        with st.spinner("Vérification des bases avant l'analyse…"):
+            st.session_state["maj_bases"] = _maj_bases(cfg_path)
+        for r, line in zip(st.session_state["maj_bases"],
+                           maj_bases.resume(st.session_state["maj_bases"])):
+            if r["statut"] == maj_bases.ECHEC:
+                st.warning(line + " — analyse sur la base en place.")
 
         with st.spinner("Analyse en cours…"):
             tables, meta = run(str(input_dir), str(cfg_path), str(output_dir),
