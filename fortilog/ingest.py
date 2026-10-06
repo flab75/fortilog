@@ -30,8 +30,12 @@ TARGET_COLS = ["date", "time", "tz", "eventtime", "logid", "type", "subtype",
                "srcport", "dstport", "action", "status", "reason", "group",
                "cfgpath", "cfgobj", "cfgattr", "remip", "tunnelip", "tunneltype",
                "service", "sentbyte", "rcvdbyte", "msg",
+               # event/vpn (sessions)
+               "tunnelid", "duration",
                # utm/app-ctrl
                "appid", "appcat", "app", "hostname", "apprisk", "direction", "policyid",
+               # traffic/local : discriminant d'un drop par local-in-policy (A1)
+               "policytype",
                # event/security-rating
                "auditscore", "criticalcount", "highcount", "mediumcount",
                "lowcount", "passedcount", "auditreporttype", "auditid"]
@@ -41,10 +45,14 @@ TARGET_COLS = ["date", "time", "tz", "eventtime", "logid", "type", "subtype",
 # Le frame d'analyse ne garde que celles-ci : une colonne objet coûte ~8 o/cellule
 # rien qu'en pointeurs, donc en RETIRER est le plus gros levier mémoire.
 ANALYSIS_COLS = ["date", "time", "eventtime", "logid", "type", "subtype", "logdesc",
-                 "user", "ui", "srcip", "dstip", "action", "status", "reason", "group",
-                 "cfgpath", "cfgobj", "app", "appcat", "apprisk", "hostname",
+                 "user", "ui", "srcip", "remip", "dstip", "action", "status", "reason", "group",
+                 "cfgpath", "cfgobj", "app", "appcat", "apprisk", "hostname", "policytype",
                  "auditscore", "criticalcount", "highcount", "mediumcount",
                  "lowcount", "passedcount", "auditreporttype"]
+
+# Colonnes lues EN PLUS d'ANALYSIS_COLS pour les seuls fichiers event/vpn (encart VPN) :
+# les charger pour tout le corpus coûterait 6 colonnes objet sur des millions de lignes.
+VPN_COLS = ["tunnelid", "duration", "sentbyte", "rcvdbyte", "tunnelip", "tunneltype"]
 
 # Le reste de TARGET_COLS : uniquement pour la feuille Excel « Données unifiées »,
 # jamais lu par une analyse -> relu à la demande pour les seules lignes affichées.
@@ -119,7 +127,7 @@ def load_columns_for_rows(files, wanted: set, columns) -> pd.DataFrame:
         if not want:
             continue
         i = -1
-        with open(f, errors="replace") as fh:
+        with open(f, encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 line = line.strip()
                 if not line:

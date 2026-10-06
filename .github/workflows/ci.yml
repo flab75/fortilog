@@ -29,4 +29,8 @@ jobs:
 
       - name: Run test suite (fast, sans vrais logs)
         # Les tests @slow nécessitent de VRAIS exports FortiGate (privés) -> exclus en CI.
+        # PYTHONWARNDEFAULTENCODING : toute E/S texte sans encoding= devient une erreur
+        # (cf. filterwarnings dans pyproject.toml) — attrape sur Linux les bugs cp1252 de Windows.
+        env:
+          PYTHONWARNDEFAULTENCODING: "1"
         run: pytest -m "not slow"

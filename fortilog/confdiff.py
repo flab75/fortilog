@@ -182,8 +182,8 @@ def compare(ok_path, current_path, logs_dir=None, cfg=None, all_sections=False):
     """Compare deux fichiers .conf (+ attribution via logs si fournis).
     Renvoie (diff_df, meta) avec qui a sauvegardé chaque backup."""
     from pathlib import Path
-    text_ok = Path(ok_path).read_text(errors="replace")
-    text_cur = Path(current_path).read_text(errors="replace")
+    text_ok = Path(ok_path).read_text(encoding="utf-8", errors="replace")
+    text_cur = Path(current_path).read_text(encoding="utf-8", errors="replace")
     diff = diff_configs(text_ok, text_cur, all_sections=all_sections)
     if logs_dir:
         diff = attribute_changes(diff, load_change_events(logs_dir, cfg))
@@ -208,7 +208,7 @@ def main():
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--all", action="store_true", help="toutes les sections (pas seulement sensibles)")
     a = ap.parse_args()
-    cfg = yaml.safe_load(Path(a.config).read_text()) if Path(a.config).exists() else {}
+    cfg = yaml.safe_load(Path(a.config).read_text(encoding="utf-8")) if Path(a.config).exists() else {}
     diff, meta = compare(a.ok, a.current, logs_dir=a.logs, cfg=cfg, all_sections=a.all)
     print(f"Référence : {meta['ok_file']} (sauvée par {meta['ok_saved_by'] or '?'})")
     print(f"Actuelle  : {meta['current_file']} (sauvée par {meta['current_saved_by'] or '?'})")

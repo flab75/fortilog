@@ -120,3 +120,24 @@ def test_sans_quiet_progression_ingestion_sur_stderr(capsys):
     finally:
         shutil.rmtree(input_dir, ignore_errors=True)
         shutil.rmtree(output_dir, ignore_errors=True)
+
+
+def test_fichier_identique_ignore_et_fenetre_temporelle_annoncee():
+    """D2 : même export reçu 2× (MD5 égal) -> ignoré, et dit comme tel.
+    D1 : la fenêtre réellement couverte par chaque fichier figure en tête de rapport."""
+    from fortilog.main import run
+    input_dir, output_dir = _dirs()
+    try:
+        shutil.copy(FIXTURES / "benign_mix.log", input_dir / "export.log")
+        shutil.copy(FIXTURES / "benign_mix.log", input_dir / "export_copie.log")
+        tables, meta = run(input_dir, CONFIG_PATH, output_dir, quiet=True)
+        doublons = [f for f in meta["files"] if f.get("doublon_de")]
+        assert len(doublons) == 1 and doublons[0]["doublon_de"] == "export.log"
+        source = [f for f in meta["files"] if not f.get("doublon_de")][0]
+        assert source["debut"] and source["fin"] and source["debut"] <= source["fin"]
+        txt = (Path(output_dir) / "rapport_fortigate.txt").read_text(encoding="utf-8")
+        assert "IDENTIQUE à export.log" in txt
+        assert f"couvre {source['debut']} -> {source['fin']}" in txt
+    finally:
+        shutil.rmtree(input_dir, ignore_errors=True)
+        shutil.rmtree(output_dir, ignore_errors=True)

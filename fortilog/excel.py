@@ -3,10 +3,10 @@
 from __future__ import annotations
 import pandas as pd
 
-SHEETS_ORDER = ["Rapport", "Tableau de bord", "UTM descriptif", "Evenements signales",
+SHEETS_ORDER = ["Rapport", "Tableau de bord", "Sessions VPN", "UTM descriptif", "Evenements signales",
                 "Acteurs a risque", "Chaines suspectes", "IP malveillantes", "Audit config",
-                "Comparaison config", "Sources externes", "Rafales", "Differentiels",
-                "Donnees unifiees", "Referentiel"]
+                "Comparaison config", "Sources externes", "Blocages local-in", "Rafales", "Differentiels",
+                "Blocage candidats", "Empreintes IP", "Reseau descriptif", "Donnees unifiees", "Referentiel", "Guide des logs"]
 
 SEV_COLORS = {"critique": "#C00000", "eleve": "#E26B0A", "moyen": "#BF8F00",
               "faible": "#7F7F7F", "info": "#9CC3E5"}
@@ -107,7 +107,22 @@ def write_workbook(path, tables, cfg, analysis_text=""):
         # Sources externes (contexte géo/ASN) — top des IP externes par volume
         _write_df(writer, "Sources externes", tables.get("sources_externes"), header_fmt)
         _write_df(writer, "Tableau de bord", tables["agg"], header_fmt)
+        # Encart VPN : 1 ligne = 1 tunnel (connexion, clôture, motif, légitimité)
+        _write_df(writer, "Sessions VPN", tables.get("vpn_sessions"), header_fmt)
+        # Guide : à quoi sert chaque type de log, et lesquels n'apportent rien ici
+        _write_df(writer, "Guide des logs", tables.get("log_guide"), header_fmt, max_width=80)
         _write_df(writer, "UTM descriptif", tables.get("utm_descriptifs"), header_fmt)
+        # Efficacité des contre-mesures : une ligne par IP ayant subi un drop local-in
+        _write_df(writer, "Blocages local-in", tables.get("blocages_local_in"), header_fmt,
+                  max_width=80)
+        # Grappes d'IP candidates à un blocage (liste de travail, décision humaine)
+        _write_df(writer, "Blocage candidats", tables.get("blocage_candidats"), header_fmt,
+                  max_width=80)
+        # Empreinte de dictionnaire + cadence par IP (descriptif, aucune sévérité)
+        _write_df(writer, "Empreintes IP", tables.get("empreintes_ip"), header_fmt, max_width=80)
+        # Bruit réseau entrant : IPsec phase 1 refusée, ICMP externe (descriptif)
+        _write_df(writer, "Reseau descriptif", tables.get("reseau_descriptif"), header_fmt,
+                  max_width=80)
         _write_df(writer, "Rafales", tables["bursts"], header_fmt)
         _write_df(writer, "Differentiels", tables["diff"], header_fmt)
         _write_df(writer, "Referentiel", tables["ref"], header_fmt)

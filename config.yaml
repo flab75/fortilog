@@ -59,6 +59,50 @@ bruteforce_name_invalid:
   fenetre_minutes: 60
   seuil_echecs: 20
 
+# R16 — échecs de login visant un compte qui EXISTE dans le référentiel.
+# Le motif d'échec ne tranche pas (`sslvpn_login_permission_denied` est le même pour un
+# compte inconnu et un mot de passe erroné) : le discriminant est le comportement de l'IP.
+# Une IP d'attaque tente aussi des dizaines de comptes inexistants ; l'utilisateur
+# légitime qui se trompe de mot de passe n'en tente qu'un (mesuré sur vrais exports).
+comptes_cibles:
+  actif: true
+  seuil_spray: 5          # comptes hors référentiel tentés par la même IP -> attaque ciblée
+  seuil_ip_distinctes: 2  # nb d'IP d'attaque visant le même compte -> critique
+  seuil_ip_campagne: 3    # IP ne tentant QUE ce compte : campagne distribuée (moyen)
+                          # au-delà de ce nb d'IP distinctes sur le compte
+
+# Grappes d'IP CANDIDATES à un blocage (liste de travail, l'outil ne bloque jamais rien).
+# Retenues : IP externe hors infrastructure, ayant tenté au moins `seuil_comptes_inexistants`
+# comptes ABSENTS du référentiel, et n'ayant JAMAIS ouvert de session sur la période
+# (garde-fou anti-coupure). Regroupement en /24 — sauf si le /24 abrite une IP ayant réussi
+# une connexion, auquel cas les IP fautives restent en /32.
+blocage_candidats:
+  actif: true
+  seuil_comptes_inexistants: 5
+  max_grappes: 50
+  nom_groupe: BLOCKLIST-FORTILOG  # nom de l'addrgrp dans le BROUILLON CLI
+  interface_wan: wan1             # interface visée par la local-in-policy du brouillon
+
+# Empreinte de dictionnaire + cadence par IP (C1/C2) — DESCRIPTIF, aucune sévérité.
+# `min_tentatives` : en deçà, une IP n'a pas d'« empreinte » exploitable (bruit).
+empreintes:
+  actif: true
+  min_tentatives: 10
+  max_lignes: 30
+
+# Bruit réseau entrant (E1/E2) — DESCRIPTIF, aucune sévérité : négociations IPsec
+# phase 1 refusées et pings entrants d'IP externes. `top_n` = lignes par sujet.
+reseau_descriptif:
+  actif: true
+  top_n: 20
+
+# R17 — pays attendus des accès RÉUSSIS (codes ISO2, liste vide = règle inactive).
+# Un accès abouti hors de cette liste -> `faible` (SUSPICION) : congés, VPN personnel et
+# opérateur mobile déplacent légitimement un utilisateur. L'intérêt principal est l'inverse :
+# aucun accès réussi hors liste = argument fort contre une compromission (dit en synthèse).
+# Nécessite une base géo (`geo_db_path`) ; sans base, la règle est silencieusement absente.
+pays_attendus: [FR]
+
 # R12 — horaires inhabituels : login admin RÉUSSI hors plage ouvrée -> SUSPICION
 # comportementale (faible). Ajuster `debut`/`fin` au rythme réel de l'organisation.
 horaires_ouvres:

@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Rapport texte synthétique. Rappelle les limites assumées."""
 from __future__ import annotations
+import pandas as pd
+
+from . import logguide
 from .ingest import UTM_NO_RULES
 
 LIMITES = """\
@@ -37,7 +40,16 @@ def build_report(tables, meta) -> str:
             label = "(UTM reconnu, sans règles dédiées — grille générique)"
         else:
             label = "(reconnu)"
-        L.append(f"  - {f['name']}: type={f['type']}/{f['subtype']} {label} | {f['rows']} lignes")
+        if f.get("doublon_de"):
+            L.append(f"  - {f['name']}: IDENTIQUE à {f['doublon_de']} (contenu MD5 égal) "
+                     "— ignoré, ce n'est pas une seconde source")
+            continue
+        fenetre = (f" | couvre {f['debut']} -> {f['fin']}"
+                   if f.get("debut") else " | fenêtre inconnue (aucun horodatage exploitable)")
+        L.append(f"  - {f['name']}: type={f['type']}/{f['subtype']} {label} "
+                 f"| {f['rows']} lignes{fenetre}")
+    L.append("  (Une absence d'événement ne vaut que DANS ces fenêtres : un log qui s'arrête "
+             "à 13:34 ne dit rien de 13:40.)")
     if meta.get("n_configs"):
         L.append(f"Fichiers de configuration audités (.conf) : {meta['n_configs']}")
     L.append("")
@@ -74,6 +86,87 @@ def build_report(tables, meta) -> str:
                      f"{r['echecs_login']} échecs, {r['logins_ok']} logins OK, "
                      f"{r['lockouts']} lockouts, {r['sslvpn_fails']} SSL-VPN fails, "
                      f"{r['pwd_invalid']} passwd_invalid, {r['ip_sources_uniques']} IP src")
+        L.append("")
+    vs = tables.get("vpn_sessions")
+    st_ = meta.get("vpn_stats") or {}
+    if vs is not None and not vs.empty:
+        L.append(f"SESSIONS VPN : {st_.get('n_sessions', len(vs))} tunnel(s) "
+                 f"pour {st_.get('n_users', 0)} compte(s)")
+        if st_.get("motifs"):
+            L.append("  Motifs de clôture : "
+                     + ", ".join(f"{k} ({v})" for k, v in st_["motifs"].items()))
+        if st_.get("n_ouvertes"):
+            L.append(f"  {st_['n_ouvertes']} session(s) encore ouverte(s) en fin de période "
+                     "(durée non close : pas de tunnel down dans la fenêtre).")
+        if st_.get("n_orphelines"):
+            L.append(f"  {st_['n_orphelines']} session(s) montée(s) avant la période analysée.")
+        for _, r in vs.iterrows():
+            deb = str(r["debut"])[:16] if pd.notna(r["debut"]) else "?"
+            fin = str(r["fin"])[:16] if pd.notna(r["fin"]) else "—"
+            geo = f" {r['pays']}" if r.get("pays") else ""
+            L.append(f"    {deb} -> {fin} | {r['boitier']} | {r['user']} ({r['groupe']}) "
+                     f"| {r['srcip']}{geo} | {r['duree']} | {r['statut']}"
+                     + (f" : {r['motif_fin']}" if r["motif_fin"] else "")
+                     + f" | ↑{r['envoye_mo']} ↓{r['recu_mo']} Mo | {r['legitimite']}")
+        L.append(f"  (Hors sessions : {st_.get('n_login_fail', 0)} échec(s) de login SSL-VPN et "
+                 f"{st_.get('n_bruit_tls', 0)} ligne(s) de bruit TLS sans utilisateur — "
+                 "poignées de main de scanners, pas des connexions.)")
+        L.append("")
+    bl = tables.get("blocages_local_in")
+    if bl is not None and not bl.empty:
+        L.append("EFFICACITÉ DES BLOCAGES LOCAL-IN (descriptif, sans sévérité) :")
+        for _, r in bl.iterrows():
+            L.append(f"  {r['srcip']} [{r['boitiers']}] — {r['n_drops']} drop(s) — {r['statut']}")
+        L.append("  (Fenêtre = celle des logs fournis. Si les drops local-in ne sont pas "
+                 "journalisés sur le boîtier, l'absence de ligne ne prouve rien.)")
+        L.append("")
+    emp = tables.get("empreintes_ip")
+    if emp is not None and not emp.empty:
+        L.append("EMPREINTE DE DICTIONNAIRE ET CADENCE PAR IP (descriptif, sans sévérité) :")
+        for _, r in emp.iterrows():
+            L.append(f"    {r['srcip']} — {r['n_tentatives']} tentatives sur "
+                     f"{r['n_comptes']} identifiant(s) : {r['echantillon_comptes']}")
+            cad = (f"toutes les ~{r['cadence_mediane_s']} s ({r['regularite']})"
+                   if r["cadence_mediane_s"] != "" else "cadence non mesurable")
+            L.append(f"        {cad}" + (f" — {r['suite']}" if r["suite"] else ""))
+        L.append("  (Le vocabulaire tenté caractérise la campagne ; l'outil ne la nomme pas. "
+                 "La colonne « suite » extrapole la CADENCE : soit quand guetter la "
+                 "prochaine tentative, soit depuis quand l'IP s'est tue — une observation "
+                 "à confronter aux contre-mesures, pas une preuve qu'elles en sont la cause.)")
+        L.append("")
+    rs = tables.get("reseau_descriptif")
+    if rs is not None and not rs.empty:
+        L.append("BRUIT RÉSEAU ENTRANT (descriptif, sans sévérité) :")
+        for sujet, g in rs.groupby("sujet", sort=False):
+            f0 = g.iloc[0]
+            L.append(f"  {sujet} — {f0['n_lignes_sujet']} ligne(s) depuis "
+                     f"{f0['n_sources_sujet']} source(s) ; {len(g)} listée(s) ici "
+                     "(les plus volumineuses) :")
+            for _, r in g.iterrows():
+                geo_ = f" [{r['pays']} / {r['asn']} {r['org']}]" if r["pays"] or r["asn"] else ""
+                L.append(f"    {r['source']}{geo_} — {r['detail'] or str(r['occurrences'])}")
+        L.append("  (Ce que les logs montrent, sans qualification : ni « scan », ni « attaque ». "
+                 "L'ICMP est reconnu par le champ app=PING du boîtier ; un export où il est "
+                 "vide ne remonte rien.)")
+        L.append("")
+    bc = tables.get("blocage_candidats")
+    if bc is not None and not bc.empty:
+        L.append(f"GRAPPES D'IP CANDIDATES À UN BLOCAGE : {len(bc)} (liste de travail, "
+                 "l'outil ne bloque rien — décision humaine)")
+        for _, r in bc.iterrows():
+            L.append(f"    {r['grappe']} ({r['n_ip']} IP) "
+                     + (f"[{r['pays']} / {r['asn']} {r['org']}] " if r["pays"] or r["asn"] else "")
+                     + f": {r['n_echecs']} échecs, {r['n_comptes_inexistants']} comptes "
+                     f"inexistants tentés — {r['verification']}"
+                     + (f" — réputation: {r['reputation']}" if r["reputation"] else ""))
+        L.append("  (Critères : IP externe hors infrastructure, ≥ N comptes inexistants tentés, "
+                 "AUCUNE session réussie sur la période. Un /24 abritant une IP ayant réussi "
+                 "une connexion n'est jamais proposé en bloc.)")
+        if meta.get("blocage_cli"):
+            L.append("")
+            L.append("  --- BROUILLON DE CONFIGURATION À RELIRE (ne pas coller tel quel) ---")
+            for line in meta["blocage_cli"].split("\n"):
+                L.append("  " + line)
         L.append("")
     ud = tables.get("utm_descriptifs")
     if ud is not None and not ud.empty:
@@ -157,5 +250,7 @@ def build_report(tables, meta) -> str:
             L.append(f"  [{ts_str}] {rtype} score={score} critical={c_crit} high={c_high}")
         L.append("  (Security Rating = audit de durcissement, pas une détection de compromission)")
         L.append("")
+    L.append(logguide.guide_markdown(meta.get("files")).replace("**", "").replace("# ", ""))
+    L.append("")
     L.append(LIMITES)
     return "\n".join(L)

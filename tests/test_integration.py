@@ -352,15 +352,15 @@ def test_run_base_perimee_avertit_end_to_end():
         shutil.copy(FIXTURES / "compromission_scenario.log", input_dir / "scenario.log")
 
         geo_db = output_dir / "geo_vieille.csv"
-        geo_db.write_text("start_ip,end_ip,country_code\n")
+        geo_db.write_text("start_ip,end_ip,country_code\n", encoding="utf-8")
         ancien = time.time() - 100 * 86400
         os.utime(geo_db, (ancien, ancien))
 
-        cfg = yaml.safe_load(CONFIG_PATH.read_text())
+        cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
         cfg["geo_db_path"] = str(geo_db)
         cfg["bases"] = {"age_max_jours": 90}
         config_path = output_dir / "config_test.yaml"
-        config_path.write_text(yaml.safe_dump(cfg))
+        config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
 
         tables, meta = run(str(input_dir), str(config_path), str(output_dir))
 

@@ -385,7 +385,7 @@ def main():
     ap.add_argument("--force", action="store_true", help="écraser le fichier de sortie s'il existe")
     a = ap.parse_args()
 
-    confs = {Path(p).name: Path(p).read_text(errors="replace") for p in a.confs}
+    confs = {Path(p).name: Path(p).read_text(encoding="utf-8", errors="replace") for p in a.confs}
     ref = extract_referential(confs)
     text = render_config_yaml(ref)
 

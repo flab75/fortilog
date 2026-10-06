@@ -37,9 +37,15 @@ fortilog/
 │   ├── confdiff.py  # comparaison 2 .conf (ajout/suppr/modif) + attribution qui/quand via logs ; CLI
 │   ├── confgen.py   # génère un config.yaml (BROUILLON) depuis des .conf (référentiel dérivé) ; CLI
 │   ├── fetch_fortinet_ranges.py # GÉNÉRATION (réseau) : plages IP Fortinet via ARIN -> .netset ; CLI
+│   ├── blocages.py  # build_blocages : efficacité des blocages local-in (descriptif)
+│   ├── blocklist.py # grappes d'IP candidates à un blocage (/24) + BROUILLON CLI FortiGate
+│   ├── empreintes.py # empreinte de dictionnaire + cadence par IP (descriptif)
+│   ├── reseau_stats.py # bruit réseau entrant : IPsec phase 1, ICMP externe (descriptif)
+│   ├── vpn.py       # build_sessions : encart VPN (1 ligne = 1 tunnel, motif de clôture, légitimité)
+│   ├── logguide.py  # catalogue statique : à quoi sert chaque fichier de log (utile / inutile)
 │   ├── analysis.py  # build_analysis : rapport de SYNTHÈSE (décrit/explique, [AVÉRÉ]/[À CONFIRMER])
 │   ├── report.py    # build_report (texte détaillé) + rappel des limites
-│   ├── excel.py     # write_workbook (xlsxwriter, 12 feuilles, « Rapport » en 1re)
+│   ├── excel.py     # write_workbook (xlsxwriter, 20 feuilles, « Rapport » en 1re)
 │   ├── validate.py  # validate_config : vérifie le config.yaml au démarrage (CIDR, regex, seuils)
 │   ├── ui_helpers.py # prepare_events/metrics/agg/bursts/diff — helpers testables hors-UI
 │   └── main.py      # run(input, config, output) + CLI argparse
@@ -55,13 +61,19 @@ fortilog/
     ├── test_geo.py      # portée, lookup plages, enrichissement, dégradation, top sources
     ├── test_validate.py # validation config (valide + cas d'erreur)
     ├── test_ui_helpers.py   # 13 tests hors-UI (prepare_events, metrics, diff, badge…)
+    ├── test_blocages.py # efficacité local-in (A2) + constats C9-C12 de confaudit
+    ├── test_blocklist.py # grappes candidates au blocage (critères, /24, garde-fou, CLI)
+    ├── test_empreintes.py # empreinte de dictionnaire + cadence (C1/C2)
+    ├── test_reseau_stats.py # bruit réseau entrant : IPsec phase 1, ICMP (E1/E2)
+    ├── test_vpn.py      # encart VPN : appariement des tunnels, volumes, bruit TLS, guide des logs
     └── test_integration.py # scénario compromission + bénin + vrais logs (@slow)
 ```
 
 ## Flux (`main.run`)
 **validate_config** → **audit .conf** (confaudit) → ingest → parse → concat → build_timestamp →
 assign_boitier → deduplicate → (catégorisation mémoire) → detect (R1-R12) → **correlate** →
-**enrichissement géo + réputation** → aggregate + bursts + diffs → report + excel.
+**enrichissement géo + réputation** → **sessions VPN** (vpn.build_sessions) → **blocages
+local-in** (blocages.build_blocages) → aggregate + bursts + diffs → report + excel.
 `run()` accepte logs ET/OU `.conf` ; **mode audit-config seul** si aucun log fourni
 (import de configs uniquement, p.ex. depuis l'UI Streamlit). `_emit()` calcule la
 **synthèse** (`analysis.build_analysis`), l'écrit en 1re feuille Excel « Rapport » +
@@ -105,6 +117,14 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
   - **C4** `automation-action` de type `cli-script`/`webhook` (persistance/exfil) → élevé.
   - **C5** `allowaccess` avec `telnet`, ou `http/https/ssh` sur interface `role wan` → élevé.
   - **C6** config sauvée par un compte hors référentiel (en-tête `user=`) → moyen.
+  - **C7** compte `user local` sans `two-factor` → **élevé** s'il est par ailleurs visé par
+    des échecs de login (croisement avec les logs, `comptes_vises`), **moyen** sinon. Constat
+    d'ÉTAT (avéré), pas une suspicion ; le détail donne la date du dernier mot de passe.
+  - **C8** `vpn ssl settings source-address(6) = all` (portail SSL-VPN joignable depuis
+    l'Internet entier) → moyen. C'est ce qui rend le portail atteignable par les campagnes
+    de devinage de comptes.
+- L'audit est joué **après** la détection quand des logs sont fournis (C7 a besoin des comptes
+  visés) ; en mode audit-config seul, `comptes_vises` est vide (C7 reste en moyen).
 - Sortie : table `config_audit` → feuille Excel « Audit config » + section rapport.
 - **Garde-fou** : tout est SUSPICION/à confirmer (un admin légitime récent peut être hors
   référentiel). Vérifié sur vrais .conf : 0 admin voyou, mais admins sans trusthost + **GUI
@@ -132,8 +152,13 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
   VPN/locaux, groupes VPN, plages internes, destinations légitimes, motifs de
   comptes suspects, paramètres de rafale).
 - **Dépendances :** pandas, xlsxwriter, pyyaml, openpyxl.
+- **E/S texte : toujours `encoding="utf-8"`** (`open`, `read_text`, `write_text`). Sous Windows
+  le défaut est cp1252 : la CI Windows a échoué sur un rapport UTF-8 relu sans encodage
+  (« à » → « � »). Garde-fou : la CI tourne avec `PYTHONWARNDEFAULTENCODING=1` et
+  `filterwarnings = error::EncodingWarning` → tout oubli fait échouer les tests, même sous Linux.
+  Rester compatible **Python 3.11** (CI) : pas de backslash dans une expression de f-string.
 
-## Règles de détection implémentées (`detect.py`, 15 règles)
+## Règles de détection implémentées (`detect.py`, 16 règles)
 1. Login admin réussi depuis source **externe** → critique ; compte hors référentiel → élevé ; interne+connu → info.
 2. Brute-force sur **compte valide** (`passwd_invalid`) → élevé.
 3. Tunnel **SSL-VPN** établi hors référentiel (user/groupe inconnu) → critique.
@@ -144,6 +169,10 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
 6. Téléchargement de config via GUI → moyen ; de logs → faible.
 7. Automation déclenchée → info (l'event log ne donne pas l'action-type ; vérifier en config).
 8. Trafic sortant du boîtier (traffic/local) vers destination non listée → moyen.
+   **La source doit être une interface DÉCLARÉE du boîtier** (`wan`/`mgmt`) : `traffic/local`
+   porte les DEUX sens, et sans cette contrainte tout le trafic entrant était libellé
+   « sortant du boîtier » (mesuré : 3 948 des 4 412 événements avaient le WAN en `dstip`).
+   Boîtier non déclaré → règle silencieuse (aucune portée devinée).
    Exclusions automatiques : IP WAN propres des boîtiers, `destinations_legitimes`
    (IP **ou CIDR**), et **toutes les plages Fortinet** (FortiGuard/FortiCloud/FortiSASE)
    par DEUX mécanismes complémentaires : (A) fichier statique `fortinet_ranges_file`
@@ -167,6 +196,24 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
     `fin`, défaut 7h-20h) ou le week-end (`alerte_weekend`) → **faible** (SUSPICION
     comportementale, tunable). Vérifié sur vrais logs : remonte les connexions adminA
     de ~06h45 (avant 7h) — visible sans être alarmant.
+
+16. **Échecs de login ciblant un compte du RÉFÉRENTIEL** (`comptes_cibles`) : le compte visé
+    existe (`admins_connus`/`utilisateurs_vpn_actifs`/`utilisateurs_locaux`, comparaison
+    insensible à la casse), sur `Admin login failed` OU `SSL VPN login fail` (`FAIL_LOGDESC`).
+    Le motif d'échec ne tranche PAS (`sslvpn_login_permission_denied` = même étiquette pour
+    compte inconnu et mot de passe erroné) : le discriminant est le **comportement de l'IP**
+    — a-t-elle aussi tenté des comptes inexistants ? ≥ `seuil_spray` (défaut 5) → **eleve**,
+    **critique** si ≥ `seuil_ip_distinctes` (défaut 2) IP de ce type visent le même compte ;
+    0 autre compte tenté → **info** « vraisemblablement l'utilisateur légitime ». Un événement
+    par (compte, IP) sur toute la période (pas de fenêtre : campagnes étalées sur des jours).
+    Variantes de casse listées dans le détail (indice d'énumération). SUSPICION.
+    Chaque constat dit aussi si le compte a **réellement ouvert une session** sur la période :
+    « aucun accès réussi », « a par ailleurs ouvert une session depuis <IP> (origine à valider) »,
+    ou — cas à vérifier en priorité — « ⚠ un accès a RÉUSSI depuis une IP ayant AUSSI échoué sur
+    ce compte », qui fait passer le constat en **critique**. Vérifié sur les vrais logs : 0 cas.
+    Mesuré sur vrais logs (FW-HMBM-T1, 09/2026) : les 4 IP visant un compte VPN réel tentent
+    65 à 338 comptes inexistants chacune ; une IP d'utilisateur légitime en tente 1. La
+    séparation est totale — aucun réglage de seuil délicat.
 
 ## Comparaison (`compare.py`)
 - Agrégats par **jour** (défaut) ou **heure**.
@@ -224,6 +271,16 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
   (critique pour app-ctrl où `apprisk`/`scertcname` suivent `msg`).
 - Vérifié sur 806 064 lignes réelles : 0 anomalie, ~67k lignes/s.
 
+## `remip` -> `srcip` (repli, `normalize.fill_srcip`)
+Les logs `event/vpn` portent l'IP cliente dans **`remip`**, `srcip` reste vide. Sans repli,
+les IP d'attaque SSL-VPN sont invisibles du rattachement boîtier, de la déduplication, de la
+géo/ASN, des listes de réputation, du classement des sources externes et des acteurs — qui
+lisent tous `srcip`. `fill_srcip` recopie `remip` dans `srcip` **quand `srcip` est vide**,
+juste après `build_timestamp` (donc en amont de tous les consommateurs). `remip` est dans
+`ANALYSIS_COLS` pour cette raison. Aucune IP n'est inventée : sans `remip`, `srcip` reste vide.
+Vérifié : sur un export event/vpn réel (25 000 lignes), 0 événement détecté avant le repli,
+8 après — plus géo, réputation (FireHOL L1) et acteurs renseignés.
+
 ## Rattachement boîtier (point délicat)
 Les exports ne contiennent pas de `devname`. Boîtier déduit par **IP** (WAN/mgmt).
 Pour les logs sans IP du boîtier (event/user, event/vpn, traffic/forward), un
@@ -243,7 +300,7 @@ externe » ne s'applique qu'aux accès **admin**.
 - **Inconnu** : tout autre type → parsing générique + marquage "(NON RECONNU)".
 
 ## État vérifié (tests réellement passés)
-- **Suite pytest : 160 tests rapides + 8 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
+- **Suite pytest : 310 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
 - **Comparaison config** vérifiée sur vrais .conf : 127 écarts T1↔T2 ; attribution réelle
   (ex. « adminB modifié par adminA le 2026-06-22 11:26 ») ; hashs masqués.
 - **Rapport de synthèse** vérifié sur vrai T1 : relie GUI exposée WAN ↔ 128 422 échecs de login
@@ -271,6 +328,73 @@ externe » ne s'applique qu'aux accès **admin**.
 - Échelle : 118 Mo / 287 133 événements en 73 s, pic 1,05 Go RAM.
 - **Validation config** : config invalide → message explicite + arrêt (exit 1) ;
   config valide → RAS. Vérifie CIDR, IP, regex, seuils, clés requises.
+
+## Pays attendus (R17, `pays_attendus` dans config.yaml)
+Accès RÉUSSI (login admin OK / `SSL VPN tunnel up`) depuis un pays hors liste → `faible`
+(SUSPICION) ; liste vide/absente = règle inactive, sans base géo la règle est silencieuse.
+Valeur : la synthèse (§4) conclut « aucun accès réussi hors de FR — argument fort contre une
+compromission », avec la réserve d'un relais dans le pays attendu. Vérifié sur les vrais logs
+VPN du 08/09 : 23 tunnels montés depuis des IP FR, 8 depuis des IP internes, **0 hors FR**.
+
+## Couverture des comptes du référentiel (`actors.build_couverture`)
+Table PUREMENT DESCRIPTIVE (aucune sévérité — c'est R16 qui alerte) : pour chaque compte
+connu, volume d'échecs de login le visant, nb d'IP distinctes, variantes de casse vues, et —
+quand un `.conf` est fourni — l'état `double_auth` / `mdp_change` lu dans `config user local`.
+Stockée dans `meta["couverture_comptes"]`, rendue en section 3quater de la synthèse
+(pas de feuille Excel dédiée). Garde-fou de libellé : un compte à 0 échec est « pas encore
+ciblé », **jamais** « protégé ». La synthèse rappelle que des identifiants devinables
+(prénom, prénom.nom) exposent les autres comptes — [À CONFIRMER hors logs].
+
+## Encart Sessions VPN (`vpn.py`)
+`build_sessions(full, cfg, comptes_conf=None, enricher=None, repdb=None) -> (df, stats)`.
+**UNE LIGNE = UN TUNNEL** : appariement `SSL VPN tunnel up`/`tunnel down` par
+`(boitier, user, tunnelid)`. Utilisable **seul** : déposer les seuls `*-event-vpn-*.log`
+suffit (vérifié : encart complet sur vrais logs en 48 s, sans `.conf` → 2FA inconnue).
+- `statut` : `fermée` / `ouverte en fin de période` / `montée avant la période analysée`
+  (down sans up). Jamais de durée inventée pour un tunnel non apparié.
+- `motif_fin` = champ `reason` tel quel (réels : `User requested termination of service`,
+  `Lost the connection`, `auth timeout`).
+- Durée/volumes = **max** sur les lignes du tunnel (`SSL VPN statistics` porte les compteurs
+  vivants ; en ssl-web le `tunnel down` les remet à 0 — bug rencontré : `↑0.0 ↓0.0 Mo`).
+- `legitimite` : DESCRIPTIF, aucune sévérité. Cumule compte/groupe hors référentiel, pays hors
+  `pays_attendus`, IP en réputation, compte sans `two-factor` (lu dans le `.conf` via
+  `confaudit.local_users_map`) ; sinon « aucun écart au référentiel (à confirmer) ».
+- **Géo seulement si `portee == EXTERNE`**, et `ZZ`/vide jamais signalés comme pays inattendu
+  (bug rencontré : IP internes 10.10.x → « pays inattendu (ZZ) »).
+- Bruit TLS `user="N/A"` (`SSL VPN alert`, `SSL VPN new connection`, `SSL VPN exit error`) et
+  `SSL VPN login fail` comptés **à part** (`stats`), jamais transformés en sessions.
+- Colonnes techniques `ingest.VPN_COLS` (`tunnelid`, `duration`, `sentbyte`, `rcvdbyte`,
+  `tunnelip`, `tunneltype`) chargées **uniquement** pour les fichiers `event/vpn`.
+- Sorties : `tables["vpn_sessions"]` → feuille « Sessions VPN », onglet Streamlit
+  « 🔐 Sessions VPN » (+ CSV), section rapport, §3quinquies de la synthèse (écarts groupés
+  par `(user, legitimite)` pour ne pas répéter 9 lignes quasi identiques).
+- Vérifié sur vrais logs : 11 tunnels / 4 comptes, motifs `User requested termination (6),
+  Lost the connection (3), auth timeout (1)`, 1 session ouverte, 126 851 échecs et
+  152 240 lignes de bruit TLS comptés à part.
+
+## Guide des fichiers de log (`logguide.py`)
+Catalogue **statique** `LOG_GUIDE[(type, subtype)] = (contenu, ce que l'outil en fait, utilité)`
++ `NOTES` (préfixes `memory-`/`forticloud-` et leurs périodes réelles, `.conf` ≠ log, mode
+VPN seul). `build_guide(meta["files"])` marque chaque type « présent / non déposé » et ajoute
+les types inconnus rencontrés. `guide_markdown(None)` omet la ligne « dans cette analyse »
+(guide consulté avant tout upload). Sorties : dépliant sur la page d'accueil Streamlit
+(AVANT l'analyse — c'est lui qui dit quels logs déposer), feuille « Guide des logs »
+(dernière), onglet Streamlit « 📖 Guide des logs », section du rapport texte.
+**Garde-fou de libellé** : « Inutile » = *sans effet sur CETTE analyse*, jamais
+« à désactiver dans FortiCloud ».
+
+
+## Cohérence référentiel ↔ logs (`validate.coherence_referentiel`)
+Avertissement en tête de synthèse, **jamais bloquant** : une IP `boitiers.*.wan|mgmt`
+déclarée mais absente de TOUS les logs est signalée, et l'outil nomme l'IP qui, elle, se
+comporte comme une interface du boîtier — seule IP présente des **deux côtés** de
+`traffic/local` (≥ 10 fois chacun), classée EXTERNE et non déjà déclarée. Libellé en
+question, jamais en conclusion (« à vérifier »), avec la conséquence : tant que ce n'est
+pas corrigé, l'IP est traitée comme externe (acteurs, géo, réputation).
+**Cas réel qui l'a motivé** : analyse lancée avec le `config.yaml` anonymisé
+(`wan: 203.0.113.1`) sur de vrais logs → le pare-feu lui-même (94.127.15.189) arrivait en
+tête des « acteurs à investiguer ». Aucun candidat trouvé → mention franche « l'export ne
+couvre peut-être simplement pas ce boîtier ». Stocké dans `meta["ref_coherence"]`.
 
 ## Limites connues (documentées, à ne pas masquer)
 - **Mémoire (P5 phase 1+2 faite)** : parsing colonnaire + frame d'analyse restreint à
@@ -498,3 +622,141 @@ du README : le mapping est indicatif (aide au reporting), pas une attribution.
    `ui_helpers.filter_events` (pure, testable hors UI — `tests/test_ui_helpers.py`).
    Vérifié en conditions réelles via `streamlit.testing.v1.AppTest` (upload fixture →
    analyse → sélection filtre « critique » → légende mise à jour en conséquence).
+
+### P7 — Vérifier qu'une contre-mesure fonctionne (noté 2026-09-21, session terrain)
+**A1/A2/A3 — ✅ FAIT (2026-09-21)** : `policytype` ingéré (`TARGET_COLS` + `ANALYSIS_COLS`) ;
+module `fortilog/blocages.py` (`build_blocages` → `tables["blocages_local_in"]`, feuille
+« Blocages local-in » + section rapport, DESCRIPTIF sans sévérité) ; constat **C9** dans
+`confaudit.py` (restriction d'origine SSL-VPN en place mais contournée, `moyen`, SUSPICION,
+alimenté par les IP en `SSL VPN login fail` passées via `audit_files(ips_vpn_echec=...)` —
+sans logs la règle est silencieuse). Vérifié sur les logs réels du 21/09 : « 195.58.140.130
+— 7 drops — bloquée depuis 13:31:47, aucun accès depuis » et C9 sur `source-address=GEO-FR`
+(1249 IP). ATTENTION mesurée sur vrais logs : `policytype="local-in-policy"` apparaît AUSSI
+sur du trafic accepté — seul `action="deny"` fait un drop.
+**B1/B2/B3 — ✅ FAIT (2026-09-21)**, constats C10/C11/C12 de `confaudit.py` :
+**C10** (B1) `firewall local-in-policy` sans `set action` → `moyen`, libellé « à vérifier sur
+le boîtier » (on ne tranche PAS entre « le défaut est accept » et « il fallait re-committer ») ;
+le détail renvoie à la table « Blocages local-in » (des drops dans les logs = la règle agit).
+**C11** (B2) `log setting local-in-deny-unicast` ≠ `enable` (ou absent) → `faible` « drops non
+journalisés, efficacité non vérifiable » — émis SEULEMENT s'il existe au moins une
+local-in-policy (sinon rien à vérifier, pas de bruit). **C12** (B3) `srcaddr` pointant sur un
+objet inexistant ou un groupe vide → `moyen` « règle inerte ». Helpers `_names` /
+`_address_objects`. `analysis._config_tag` : un libellé « à vérifier » est désormais
+[À CONFIRMER], plus [AVÉRÉ] (une question ouverte n'est pas un fait).
+Vérifié sur les .conf réels du 21/09 : la conf 13:36 remonte C10 (règle `BLOCKLIST-VPN` sans
+`set action`), C11 et C12 silencieux (`local-in-deny-unicast=enable`, groupe à 2 membres) ;
+la conf 13:16 n'a aucune local-in-policy → aucun constat. **Backlog P7 terminé (A→E).**
+**Contexte** : une demi-journée d'audit a porté sur une seule question — « est-ce que le
+blocage marche ? ». L'outil n'a aujourd'hui aucune notion d'**efficacité d'une
+contre-mesure**. Ordre de priorité : A1 → A2 → A3 → B → C → D → E — **tous faits**.
+
+**A. Efficacité des blocages**
+- **A1 — Ingérer `policytype`** (prérequis de tout le reste, correctif d'une ligne) :
+  le champ n'est dans NI `TARGET_COLS` NI `ANALYSIS_COLS` (`ingest.py:28/45`) — les lignes
+  sont parsées, le champ discriminant est jeté. Or la preuve décisive du blocage est
+  exactement `action="deny" policytype="local-in-policy" policyid=1`.
+- **A2 — Section « Efficacité des blocages local-in »** : par IP source sur `traffic/local`,
+  nb de `deny` vs nb de connexions ayant ATTEINT le service (`accept`/`client-rst`/`close`),
+  + horodatage du **premier deny**. Sortie type : « 195.58.x.x — bloquée depuis 13:31:47
+  (7 drops, 0 accès depuis) » ou « atteint encore le boîtier malgré une règle ». Tableau
+  reconstruit à la main 3 fois dans la journée.
+- **A3 — Recoupement logs ↔ config (le plus rentable)** : si `vpn ssl settings
+  source-address` ≠ `all` mais que des IP apparaissent quand même en `ssl-login-fail`, la
+  restriction d'origine **ne les couvre pas**. C8 (`confaudit.py:194`) ne se déclenche
+  aujourd'hui que sur `source-address = all` et reste **muet** dans ce cas — pourtant réel
+  (2 IP françaises passant derrière un filtre GEO-FR). Sévérité `moyen`, libellé
+  « restriction d'origine en place mais contournée par N IP ».
+
+**B. Audit de config — pièges rencontrés**
+- **B1 — `local-in-policy` sans `action` explicite** : FortiOS n'affiche pas le champ dans
+  `show` et la règle n'a bloqué qu'après un `set action deny` explicite. Indécidable depuis
+  la config (défaut `accept` ? re-commit nécessaire ?) → libellé conforme au garde-fou
+  directeur : « action non explicite dans la config — à vérifier sur le boîtier », sans conclure.
+- **B2 — `log setting` / `local-in-deny-unicast` désactivé** → « les drops local-in ne sont
+  pas journalisés : l'efficacité des blocages n'est pas vérifiable » (réserve formulée à la main).
+- **B3 — `local-in-policy` inerte** : `srcaddr` pointant sur un groupe vide ou inexistant.
+
+**C. Caractériser les attaquants — ✅ FAIT (2026-09-21, `empreintes.py`)**
+- **C1 ✅ — Empreinte de dictionnaire par IP** : regrouper les IP par similarité (Jaccard) des
+  jeux d'identifiants tentés → « campagne A / campagne B ». Observé : vocabulaire métier
+  allemand (`Mitarbeiter`, `Buchhaltung`…) vs comptes techniques anglais + noms de villes
+  (`snmp`, `hvac`, `london1`…). `noms_cibles` est global, aucun profil par IP.
+- **C2 ✅ — Cadence** : intervalle médian entre tentatives par IP. Les deux bots tapaient toutes
+  les ~8 min à la seconde près — signature d'automate, et surtout ça **prédit la prochaine
+  tentative**, donc permet de confirmer un blocage au lieu d'attendre au hasard.
+
+**D. Honnêteté sur la couverture temporelle — ✅ FAIT (2026-09-21, `main.run` + `report.py`)**
+- **D1 ✅ — Fenêtre couverte par fichier**, affichée en tête de rapport : sans elle, une absence
+  d'événement se lit à tort comme un succès (« le log s'arrête à 13:34:42, la prochaine
+  tentative attendue n'y est pas encore »). C'est le garde-fou « dégradation honnête ».
+- **D2 ✅ — Dédup au niveau FICHIER (hash)** : même export de 25 Mo reçu 2× (MD5 identique). La
+  dédup par lignes absorbe les comptages, mais un message « fichier X identique à Y, ignoré »
+  évite de croire à deux sources.
+
+**E. Descriptif, faible priorité — ✅ FAIT (2026-09-21, `reseau_stats.py`)** (modèle `utm_stats`, aucune sévérité, jamais un constat)
+- **E1 ✅ — Erreurs IPsec phase 1** (`peer SA proposal not match local policy`, 112 sur la
+  journée) : agrégat descriptif « scan IKE ».
+- **E2 ✅ — Top sources ICMP entrant** sur `traffic/local` (flood de ping observé).
+
+## Grappes d'IP candidates à un blocage (`blocklist.py`)
+`build_candidats(full, cfg, enricher=None, repdb=None) -> DataFrame` + `cli_brouillon(df, cfg)`.
+Répond à « lesquelles bloquer, et desquelles est-on sûr ? ». **Trois critères cumulatifs** :
+IP externe hors infrastructure connue ; ≥ `blocage_candidats.seuil_comptes_inexistants`
+(défaut 5) comptes tentés **absents du référentiel** (même union que R16 :
+`admins_connus | utilisateurs_vpn_actifs | utilisateurs_locaux`) ; **zéro session réussie**
+(`Admin login successful` / `SSL VPN tunnel up`) sur la période.
+- **Regroupement en /24** (on bloque un objet, pas quarante). ASN/pays affichés, descriptifs.
+  **Garde-fou anti-coupure** : un /24 abritant une IP ayant ouvert une session n'est jamais
+  proposé en bloc — les IP fautives y restent en `/32`.
+- **Jaccard sur les dictionnaires ÉCARTÉ, mesures à l'appui** : les bots d'une campagne se
+  partagent le dictionnaire (J ≈ 0,01 entre deux IP du même /24 tapant 635 comptes chacune).
+  Ne pas ré-introduire cette piste sans nouvelle mesure.
+- Sorties : `tables["blocage_candidats"]` → feuille « Blocage candidats », section rapport,
+  onglet Streamlit « 🚫 Grappes à bloquer » ; `meta["blocage_cli"]` → **BROUILLON CLI** dans
+  un champ déroulant (`firewall address` / `addrgrp` / `local-in-policy` avec
+  **`set action deny` explicite** — cf. piège C10 — et `local-in-deny-unicast enable` pour
+  pouvoir vérifier ensuite que le blocage agit). L'outil ne bloque jamais rien.
+- Vérifié sur les vrais logs du 21/09 : 45 grappes, `77.91.71.0/24` (6 IP, IL/AS211486,
+  3 809 échecs) et `185.136.15.0/24` (5 IP, KZ) en tête ; les 5 IP ayant monté un tunnel ce
+  jour-là sont absentes de la liste comme de leurs /24.
+
+## Empreinte de dictionnaire + cadence, couverture temporelle (C1/C2/D1/D2 — FAIT 2026-09-21)
+**C1/C2 — `empreintes.py`** : `build_empreintes(full, cfg) -> DataFrame` (descriptif, aucune
+sévérité), une ligne par IP ayant ≥ `empreintes.min_tentatives` (défaut 10) échecs de login.
+Identifiants distincts + échantillon (8), intervalle médian, régularité (écart-type < ¼ de la
+médiane → « très régulière (automate) »), et colonne **`suite`** : prochaine tentative
+attendue si la cadence la projette APRÈS la fin des logs, sinon « aucune tentative depuis … ,
+N intervalle(s) manqué(s) » (l'IP s'est tue). C'est la vérification comportementale d'une
+contre-mesure — **sans conclure** qu'elle en est la cause. Le **clustering par Jaccard est
+écarté, mesures à l'appui** (cf. `blocklist.py`) : ne pas le ré-introduire sans nouvelle mesure.
+Sorties : `tables["empreintes_ip"]` → feuille « Empreintes IP », section rapport, onglet
+Streamlit « 🔬 Empreintes & cadence » (+ CSV).
+Vérifié sur les vrais logs du 21/09 : `195.58.140.130` tape un dictionnaire ALLEMAND toutes
+les ~482 s (« régulière ») puis plus rien depuis 13:23:45 (17 intervalles manqués) — la règle
+local-in posée à 13:31:47 est confirmée côté comportement ; les bots des /24 77.91.71 et
+185.136.15 tapent 620-635 identifiants tous différents (d'où l'échec du Jaccard).
+**D1 — fenêtre par fichier** : bornes min/max des timestamps par `source_file`, calculées
+après dédup dans `main.run`, stockées dans `meta["files"]` (`debut`/`fin`) et affichées en
+tête de rapport, suivies du rappel « une absence d'événement ne vaut que DANS ces fenêtres ».
+Aucun horodatage exploitable → « fenêtre inconnue » (jamais de borne inventée).
+**D2 — doublon de fichier** : MD5 du contenu calculé à l'ingestion ; un fichier déjà vu est
+ignoré et marqué `doublon_de` dans `meta["files"]` + ligne « IDENTIQUE à X » dans le rapport
+et sur stderr. La dédup par lignes absorbait les comptages, mais on croyait à deux sources.
+
+## Bruit réseau entrant (E1/E2 — FAIT 2026-09-21, `reseau_stats.py`)
+`build_reseau_descriptifs(full, cfg, enricher=None) -> DataFrame` — DESCRIPTIF, aucune
+sévérité, aucun constat (contrat `utm_stats`). Deux sujets dans une seule table :
+**E1** erreurs `IPsec phase 1` par IP avec le `reason` TEL QUEL ; **E2** ICMP entrant sur
+`traffic/local`, sources EXTERNES seulement (hors infra connue) — sinon les 29 000 pings
+d'un routeur interne vers sa passerelle noient tout.
+**Piège mesuré** : `proto` n'est NI dans `TARGET_COLS` NI dans `ANALYSIS_COLS` (une colonne
+objet de plus sur des millions de lignes) → l'ICMP est reconnu par `app="PING"`, vérifié
+équivalent sur les vrais logs (32 255 lignes `proto=1` ⟺ 32 255 `app="PING"`, aucun écart).
+Export sans ce champ → rien ne remonte, jamais d'estimation (test dédié).
+Liste bornée à `reseau_descriptif.top_n` (défaut 20) PAR SUJET, mais chaque ligne porte
+`n_lignes_sujet`/`n_sources_sujet` : une liste tronquée ne doit pas faire croire que 20
+sources sont tout ce qu'il y a. Sorties : `tables["reseau_descriptif"]` → feuille
+« Reseau descriptif », section rapport, onglet Streamlit « 📡 Bruit réseau » (+ CSV).
+Vérifié sur les vrais logs du 21/09 : 112 négociations IPsec refusées depuis 102 IP
+(1-2 chacune : DigitalOcean, Driftnet, Hurricane, Google Cloud) et 3 543 pings entrants
+depuis 692 IP externes, dont 1 476 d'une seule (AS396986).

@@ -77,13 +77,59 @@ def _edit_children(block: Block) -> list[Block]:
     return [c for c in block.children if c.kind == "edit"]
 
 
+def _names(value: str) -> list[str]:
+    """Noms d'objets d'un `set srcaddr "A" "B"` (ou non quotés) -> ['A', 'B']."""
+    return [a or b for a, b in re.findall(r'"([^"]*)"|(\S+)', value.strip()) if (a or b)]
+
+
+def _address_objects(root: Block) -> dict[str, list[str] | None]:
+    """Objets adresse connus -> membres pour un GROUPE, None pour une adresse simple.
+    Sert à C12 : une règle dont le srcaddr n'existe pas / est un groupe vide est inerte."""
+    out: dict[str, list[str] | None] = {}
+    for header in ("firewall address", "firewall address6",
+                   "firewall addrgrp", "firewall addrgrp6"):
+        grp = header.startswith("firewall addrgrp")
+        for blk in find_blocks(root, header):
+            for obj in _edit_children(blk):
+                out[obj.name] = _names(obj.settings.get("member", "")) if grp else None
+    return out
+
+
 def parse_header_user(text: str) -> str:
     """Extrait `user=` de l'en-tête #config-version (qui a sauvegardé la config)."""
     m = re.search(r"#config-version=[^\n]*?:user=([^\s:]+)", text)
     return m.group(1) if m else ""
 
 
-def audit_config(text: str, cfg: dict, source_file: str = "", boitier: str = "inconnu") -> list[dict]:
+def parse_local_users(text: str) -> dict[str, dict]:
+    """`config user local` -> {nom_minuscule: {nom, two_factor, passwd_time}}.
+
+    Sert à C7 (compte sans double authentification) et à enrichir la table de
+    couverture des comptes. Aucun secret n'est lu (le hash `passwd` est ignoré).
+    """
+    out: dict[str, dict] = {}
+    for blk in find_blocks(parse_config(text), "user local"):
+        for u in _edit_children(blk):
+            tf = u.settings.get("two-factor", "").strip('"')
+            out[u.name.lower()] = {
+                "nom": u.name,
+                "two_factor": "" if tf in ("", "disable") else tf,
+                "passwd_time": u.settings.get("passwd-time", "").strip('"'),
+            }
+    return out
+
+
+def local_users_map(conf_paths) -> dict[str, dict]:
+    """Fusionne les comptes locaux de plusieurs .conf (dernier fichier gagne)."""
+    from pathlib import Path
+    out: dict[str, dict] = {}
+    for p in conf_paths:
+        out.update(parse_local_users(Path(p).read_text(encoding="utf-8", errors="replace")))
+    return out
+
+
+def audit_config(text: str, cfg: dict, source_file: str = "", boitier: str = "inconnu",
+                 comptes_vises=(), ips_vpn_echec=None) -> list[dict]:
     """Applique la grille d'audit et renvoie une liste de constats (dicts)."""
     root = parse_config(text)
     admins = set(cfg.get("admins_connus", []))
@@ -146,6 +192,92 @@ def audit_config(text: str, cfg: dict, source_file: str = "", boitier: str = "in
                 add("Accès admin (GUI/SSH) exposé sur interface WAN", "eleve",
                     f"interface={itf.name} role=wan allowaccess={acc}")
 
+    # --- C7 : compte local sans double authentification ---
+    #     Constat d'ÉTAT (avéré), pas une suspicion. Élevé si le compte est par ailleurs
+    #     visé par des échecs de login (`comptes_vises`, fourni par l'analyse des logs) :
+    #     un identifiant devinable sans 2ᵉ facteur ne tient que par son mot de passe.
+    vises = {str(u).lower() for u in comptes_vises}
+    for nom_low, u in parse_local_users(text).items():
+        if u["two_factor"]:
+            continue
+        mdp = f" dernier mot de passe : {u['passwd_time']}" if u["passwd_time"] else \
+              " date de mot de passe absente de la config"
+        if nom_low in vises:
+            add("Compte local sans double authentification, VISÉ par des échecs de login",
+                "eleve", f"user={u['nom']} (aucun two-factor ;{mdp})")
+        else:
+            add("Compte local sans double authentification", "moyen",
+                f"user={u['nom']} (aucun two-factor ;{mdp})")
+
+    # --- C8 : portail SSL-VPN joignable depuis l'Internet entier ---
+    # --- C9 (A3) : restriction d'origine EN PLACE mais contournée — visible seulement en
+    #     croisant la config avec les logs : des IP ont quand même atteint le portail.
+    #     Un filtre large (groupe géographique p. ex.) « restreint » sans protéger.
+    for blk in find_blocks(root, "vpn ssl settings"):
+        for k in ("source-address", "source-address6"):
+            val = blk.settings.get(k, "").strip('"')
+            if not val:
+                continue
+            if val == "all":
+                add("Portail SSL-VPN ouvert à toutes les IP sources (surface d'exposition)",
+                    "moyen", f"vpn ssl settings {k}=all (aucune restriction d'origine ; "
+                             f"c'est ce qui rend le portail atteignable par les campagnes "
+                             f"de devinage de comptes)")
+            elif ips_vpn_echec:
+                n = len(ips_vpn_echec)
+                ex = ", ".join(sorted(ips_vpn_echec)[:3])
+                add("Restriction d'origine SSL-VPN en place mais contournée — SUSPICION",
+                    "moyen", f"vpn ssl settings {k}={val} : {n} IP ont malgré tout atteint le "
+                             f"portail (échecs de login SSL-VPN dans les logs) — la restriction "
+                             f"ne les couvre pas (ex. {ex}). Le contenu de l'objet « {val} » "
+                             f"n'est pas résolu ici, et la DATE de mise en place de la "
+                             f"restriction n'est pas dans le .conf (des échecs antérieurs "
+                             f"peuvent être comptés) : à vérifier sur le boîtier.")
+
+    # --- C10 (B1) / C12 (B3) : les règles local-in-policy font-elles vraiment quelque chose ?
+    #     B1 : FortiOS n'affiche pas `action` dans `show` quand il n'a jamais été posé, et
+    #     une règle sans action explicite peut ne rien bloquer (constaté sur le terrain :
+    #     le blocage n'a pris effet qu'après un `set action deny`). On ne tranche PAS entre
+    #     « le défaut est accept » et « il fallait re-committer » : on signale à vérifier.
+    addrs = _address_objects(root)
+    policies = [p for blk in find_blocks(root, "firewall local-in-policy")
+                for p in _edit_children(blk)]
+    for pol in policies:
+        ident = f"local-in-policy {pol.name} (intf={pol.settings.get('intf', '?').strip(chr(34))}, " \
+                f"srcaddr={pol.settings.get('srcaddr', '?')})"
+        if "action" not in pol.settings:
+            add("Règle local-in-policy sans action explicite — à vérifier sur le boîtier",
+                "moyen", f"{ident} : aucun `set action` dans la config. FortiOS n'affiche pas "
+                         f"toujours ce champ ; la règle peut ne rien bloquer tant qu'un "
+                         f"`set action deny` explicite n'a pas été posé. À confirmer sur le "
+                         f"boîtier — si des drops local-in figurent dans les logs, la règle "
+                         f"agit bel et bien (cf. table « Blocages local-in »).")
+        for nom in _names(pol.settings.get("srcaddr", "")):
+            if nom in ("all", "none", "?"):
+                continue
+            if nom not in addrs:
+                add("Règle local-in-policy inerte : objet source inexistant", "moyen",
+                    f"{ident} : l'objet « {nom} » n'est défini nulle part dans cette config.")
+            elif addrs[nom] == []:
+                add("Règle local-in-policy inerte : groupe source vide", "moyen",
+                    f"{ident} : le groupe « {nom} » n'a aucun membre — la règle ne vise aucune IP.")
+
+    # --- C11 (B2) : les drops local-in sont-ils seulement journalisés ? ---
+    #     Sans cette option, aucun log de drop -> l'efficacité d'un blocage n'est PAS
+    #     vérifiable depuis les logs (cf. table « Blocages local-in »).
+    if policies:
+        logset = find_blocks(root, "log setting")
+        val = ""
+        for blk in logset:
+            val = blk.settings.get("local-in-deny-unicast", val).strip('"')
+        if val != "enable":
+            etat = f"local-in-deny-unicast={val}" if val else \
+                   "local-in-deny-unicast absent de `config log setting`"
+            add("Drops local-in non journalisés — efficacité des blocages non vérifiable",
+                "faible", f"{etat} : les paquets refusés par une local-in-policy ne produisent "
+                          f"aucun log. Les blocages existent peut-être et fonctionnent, mais "
+                          f"rien dans les logs ne permet de le confirmer.")
+
     # --- C6 : Config sauvegardée par un compte hors référentiel ---
     saver = parse_header_user(text)
     if saver and saver not in admins:
@@ -155,16 +287,27 @@ def audit_config(text: str, cfg: dict, source_file: str = "", boitier: str = "in
     return findings
 
 
-def audit_files(conf_paths, cfg: dict, boitier_map=None) -> pd.DataFrame:
+def audit_files(conf_paths, cfg: dict, boitier_map=None, comptes_vises=(),
+                ips_vpn_echec=None) -> pd.DataFrame:
     """Audite plusieurs fichiers .conf -> DataFrame triée par sévérité.
-    boitier_map(source_file) -> boitier (optionnel)."""
+    boitier_map(source_file) -> boitier (optionnel).
+    ips_vpn_echec : {boitier: {ip, ...}} des IP ayant échoué au login SSL-VPN (C9) ;
+    None = pas de logs -> la règle reste silencieuse (jamais d'IP supposée)."""
     from pathlib import Path
     rows = []
     for p in conf_paths:
         p = Path(p)
-        text = p.read_text(errors="replace")
+        text = p.read_text(encoding="utf-8", errors="replace")
         boitier = boitier_map(p.name) if boitier_map else "inconnu"
-        rows.extend(audit_config(text, cfg, source_file=p.name, boitier=boitier))
+        # IP du boîtier concerné ; boîtier indéterminé -> union (ne rien attribuer à tort
+        # serait pire que d'élargir : le détail dit d'où viennent les IP).
+        ips = None
+        if ips_vpn_echec:
+            ips = ips_vpn_echec.get(boitier)
+            if ips is None:
+                ips = set().union(*ips_vpn_echec.values()) if boitier == "inconnu" else set()
+        rows.extend(audit_config(text, cfg, source_file=p.name, boitier=boitier,
+                                 comptes_vises=comptes_vises, ips_vpn_echec=ips))
     cols = ["boitier", "source_file", "severite", "regle", "detail"]
     if not rows:
         return pd.DataFrame(columns=cols)

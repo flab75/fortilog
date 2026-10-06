@@ -3,6 +3,8 @@
 from __future__ import annotations
 import pandas as pd
 
+from .common import str_col
+
 DEDUP_KEYS = ["eventtime", "logid", "srcip", "user", "action"]
 
 
@@ -12,6 +14,19 @@ def build_timestamp(df: pd.DataFrame) -> pd.Series:
         format="%Y-%m-%d %H:%M:%S", errors="coerce",
     )
     return dt
+
+
+def fill_srcip(df: pd.DataFrame) -> pd.Series:
+    """Repli `remip` -> `srcip` quand `srcip` est vide.
+
+    Les logs event/vpn portent l'IP cliente dans `remip` et laissent `srcip` vide.
+    Sans ce repli, les IP d'attaque SSL-VPN sont invisibles du rattachement boîtier,
+    de la déduplication, de la géo/ASN, des listes de réputation, du classement des
+    sources externes et de la table des acteurs — qui lisent tous `srcip`.
+    Aucune IP n'est inventée : sans `remip`, la valeur reste vide.
+    """
+    src = str_col(df, "srcip")
+    return src.where(src.ne(""), str_col(df, "remip"))
 
 
 def assign_boitier(df: pd.DataFrame, boitiers: dict, fichiers_hint: dict | None = None) -> pd.Series:

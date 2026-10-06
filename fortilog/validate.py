@@ -177,6 +177,85 @@ def validate_config(cfg: dict) -> list[str]:
                         except (ValueError, TypeError):
                             errors.append(f"{section}.{k} : '{v}' n'est pas un entier valide")
 
+    # Comptes ciblés (R16, section optionnelle) : actif booléen, seuils entiers > 0
+    cc = cfg.get("comptes_cibles")
+    if cc is not None:
+        if not isinstance(cc, dict):
+            errors.append(f"comptes_cibles : attendu un dictionnaire, reçu {type(cc).__name__}")
+        else:
+            if cc.get("actif") is not None and not isinstance(cc.get("actif"), bool):
+                errors.append(f"comptes_cibles.actif : attendu un booléen, reçu {cc.get('actif')!r}")
+            for k in ("seuil_spray", "seuil_ip_distinctes", "seuil_ip_campagne"):
+                v = cc.get(k)
+                if v is not None:
+                    try:
+                        if int(v) <= 0:
+                            errors.append(f"comptes_cibles.{k} : doit être > 0, reçu {v}")
+                    except (ValueError, TypeError):
+                        errors.append(f"comptes_cibles.{k} : '{v}' n'est pas un entier valide")
+
+    # Grappes candidates au blocage (section optionnelle) : actif booléen, seuils > 0
+    bc = cfg.get("blocage_candidats")
+    if bc is not None:
+        if not isinstance(bc, dict):
+            errors.append(f"blocage_candidats : attendu un dictionnaire, reçu {type(bc).__name__}")
+        else:
+            if bc.get("actif") is not None and not isinstance(bc.get("actif"), bool):
+                errors.append(
+                    f"blocage_candidats.actif : attendu un booléen, reçu {bc.get('actif')!r}")
+            for k in ("seuil_comptes_inexistants", "max_grappes"):
+                v = bc.get(k)
+                if v is not None:
+                    try:
+                        if int(v) <= 0:
+                            errors.append(f"blocage_candidats.{k} : doit être > 0, reçu {v}")
+                    except (ValueError, TypeError):
+                        errors.append(f"blocage_candidats.{k} : '{v}' n'est pas un entier valide")
+
+    # Empreintes/cadence (section optionnelle) : actif booléen, seuils > 0
+    em = cfg.get("empreintes")
+    if em is not None:
+        if not isinstance(em, dict):
+            errors.append(f"empreintes : attendu un dictionnaire, reçu {type(em).__name__}")
+        else:
+            if em.get("actif") is not None and not isinstance(em.get("actif"), bool):
+                errors.append(f"empreintes.actif : attendu un booléen, reçu {em.get('actif')!r}")
+            for k in ("min_tentatives", "max_lignes"):
+                v = em.get(k)
+                if v is not None:
+                    try:
+                        if int(v) <= 0:
+                            errors.append(f"empreintes.{k} : doit être > 0, reçu {v}")
+                    except (ValueError, TypeError):
+                        errors.append(f"empreintes.{k} : '{v}' n'est pas un entier valide")
+
+    # Bruit réseau descriptif (section optionnelle) : actif booléen, top_n > 0
+    rs = cfg.get("reseau_descriptif")
+    if rs is not None:
+        if not isinstance(rs, dict):
+            errors.append(f"reseau_descriptif : attendu un dictionnaire, reçu {type(rs).__name__}")
+        else:
+            if rs.get("actif") is not None and not isinstance(rs.get("actif"), bool):
+                errors.append(f"reseau_descriptif.actif : attendu un booléen, reçu {rs.get('actif')!r}")
+            v = rs.get("top_n")
+            if v is not None:
+                try:
+                    if int(v) <= 0:
+                        errors.append(f"reseau_descriptif.top_n : doit être > 0, reçu {v}")
+                except (ValueError, TypeError):
+                    errors.append(f"reseau_descriptif.top_n : '{v}' n'est pas un entier valide")
+
+    # Pays attendus (R17, clé optionnelle) : liste de codes ISO2
+    pa = cfg.get("pays_attendus")
+    if pa is not None:
+        if not isinstance(pa, list):
+            errors.append(f"pays_attendus : attendu une liste, reçu {type(pa).__name__}")
+        else:
+            for i, c in enumerate(pa):
+                if not isinstance(c, str) or len(c) != 2 or not c.isalpha():
+                    errors.append(f"pays_attendus[{i}] : attendu un code pays ISO2 "
+                                  f"(ex. FR), reçu {c!r}")
+
     # Horaires ouvrés (R12, section optionnelle) : debut/fin entiers 0-23, debut < fin
     ho = cfg.get("horaires_ouvres")
     if ho is not None:
@@ -316,3 +395,56 @@ def validate_config(cfg: dict) -> list[str]:
                     errors.append(f"rapport.max_constats : '{mc}' n'est pas un entier valide")
 
     return errors
+
+
+def coherence_referentiel(full, cfg, min_occ: int = 10) -> list[str]:
+    """Le référentiel décrit-il bien CES logs ? Avertissements, jamais bloquant.
+
+    Motivation (cas réel) : une analyse lancée avec le `config.yaml` anonymisé
+    (`wan: 203.0.113.1`) sur de vrais logs → l'IP WAN réelle du pare-feu est inconnue,
+    donc classée EXTERNE, absente des exclusions d'infrastructure, et le boîtier
+    lui-même finit en tête des « acteurs à investiguer ».
+
+    Heuristique, volontairement étroite : sur `traffic/local`, une interface de boîtier
+    est la seule IP présente des DEUX côtés (`srcip` ET `dstip`, ≥ `min_occ` chacun).
+    On ne conclut pas — on pose la question et on nomme l'IP à vérifier.
+    """
+    from . import geo
+    from .common import str_col
+
+    out: list[str] = []
+    boitiers = cfg.get("boitiers") or {}
+    declarees = {str(b.get(k)) for b in boitiers.values() for k in ("wan", "mgmt")
+                 if b.get(k)}
+    if full is None or full.empty or not declarees:
+        return out
+
+    src, dst = str_col(full, "srcip"), str_col(full, "dstip")
+    vues = set(src[src.ne("")].unique()) | set(dst[dst.ne("")].unique())
+    absentes = sorted(declarees - vues)
+    if not absentes:
+        return out
+
+    loc = str_col(full, "type").eq("traffic") & str_col(full, "subtype").eq("local")
+    ns, nd = src[loc].value_counts(), dst[loc].value_counts()
+    nets = geo._nets(cfg)
+    candidats = [ip for ip in (set(ns.index) & set(nd.index)) - declarees
+                 if ip and ns[ip] >= min_occ and nd[ip] >= min_occ
+                 and geo.classify_scope(ip, nets) == geo.EXTERNE]
+    candidats.sort(key=lambda ip: -(int(ns[ip]) + int(nd[ip])))
+
+    out.append("⚠ Référentiel : " + ", ".join(absentes)
+               + (" est déclarée comme interface de boîtier mais n'apparaît"
+                  if len(absentes) == 1 else
+                  " sont déclarées comme interfaces de boîtier mais n'apparaissent")
+               + " dans aucun log.")
+    for ip in candidats[:3]:
+        out.append(f"  {ip} se comporte comme une interface du boîtier "
+                   f"(vue {int(ns[ip])} fois en source et {int(nd[ip])} fois en destination "
+                   "sur traffic/local) — le référentiel ne correspond probablement pas à ces "
+                   "logs, à vérifier. Tant qu'il n'est pas corrigé, cette IP est traitée comme "
+                   "externe (classement des acteurs, géo, réputation).")
+    if not candidats:
+        out.append("  Aucune autre IP ne se comporte comme une interface du boîtier dans ces "
+                   "logs — l'export ne couvre peut-être simplement pas ce boîtier.")
+    return out
