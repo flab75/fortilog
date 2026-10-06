@@ -154,8 +154,10 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
   chemin propre à une machine dans le code, les scripts ou les configs. Tout config se charge
   via `common.load_config` : les chemins relatifs de fichiers (`PATH_KEYS` + `reputation_lists`)
   sont résolus contre le **dossier du config** (un config déposé dans l'UI est résolu contre le
-  projet avant écriture en temporaire). `--config` absent → `./config.yaml` sinon celui du
-  projet. Démarrage : `./fortilog.sh` (venv `.venv/` local auto-créé, Python ≥ 3.11 ; ancien
+  projet avant écriture en temporaire). `--config` absent → `./config.yaml` sinon
+  `common.project_config_path()` : **`config.local.yaml` prioritaire sur `config.yaml`**
+  (anonymisé), aussi pour l'UI, qui affiche un avertissement quand elle tombe sur l'exemple
+  — vrais logs + config anonymisé = le pare-feu en tête des acteurs (cas réel). Démarrage : `./fortilog.sh` (venv `.venv/` local auto-créé, Python ≥ 3.11 ; ancien
   `run_ui.sh` imposait `/Users/flab/miniforge3` → alias). Vérifié le 2026-10-05 : copie du
   projet dans un chemin avec espace, lancée depuis un autre cwd sous Python 3.11 → venv créé,
   bases trouvées, analyse OK, UI HTTP 200, 339 tests verts. Ne pas réintroduire de syntaxe
@@ -316,7 +318,7 @@ externe » ne s'applique qu'aux accès **admin**.
 - **Inconnu** : tout autre type → parsing générique + marquage "(NON RECONNU)".
 
 ## État vérifié (tests réellement passés)
-- **Suite pytest : 339 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
+- **Suite pytest : 340 tests rapides + 10 tests sur vrais logs** (`pytest -m "not slow"` / `pytest -m slow`).
 - **Comparaison config** vérifiée sur vrais .conf : 127 écarts T1↔T2 ; attribution réelle
   (ex. « adminB modifié par adminA le 2026-06-22 11:26 ») ; hashs masqués.
 - **Rapport de synthèse** vérifié sur vrai T1 : relie GUI exposée WAN ↔ 128 422 échecs de login

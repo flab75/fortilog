@@ -3,7 +3,8 @@
 config, jamais du dossier courant — l'outil fonctionne là où il est posé."""
 from pathlib import Path
 
-from fortilog.common import resolve_paths, load_config, default_config_path, PROJECT_DIR
+from fortilog.common import (resolve_paths, load_config, default_config_path,
+                             project_config_path, PROJECT_DIR)
 
 
 def test_chemins_relatifs_resolus_contre_le_dossier_du_config(tmp_path):
@@ -31,15 +32,15 @@ def test_tilde_developpe(tmp_path):
 def test_load_config_independant_du_dossier_courant(tmp_path, monkeypatch):
     d = tmp_path / "projet"
     d.mkdir()
-    (d / "c.yaml").write_text("geo_db_path: data/geo.csv\n")
+    (d / "c.yaml").write_text("geo_db_path: data/geo.csv\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)                                    # cwd ≠ dossier du config
     assert load_config(d / "c.yaml")["geo_db_path"] == str(d / "data/geo.csv")
 
 
 def test_config_par_defaut(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    assert default_config_path() == str(PROJECT_DIR / "config.yaml")
-    (tmp_path / "config.yaml").write_text("{}\n")
+    assert default_config_path() == str(project_config_path())
+    (tmp_path / "config.yaml").write_text("{}\n", encoding="utf-8")
     assert default_config_path() == "config.yaml"
 
 
@@ -55,3 +56,10 @@ def test_ssl_context_utilise_certifi():
     assert ctx.verify_mode.name == "CERT_REQUIRED"
     assert ctx.cert_store_stats()["x509_ca"] > 0       # magasin non vide
     assert certifi.where()
+
+
+def test_referentiel_local_prefere_a_l_anonymise(tmp_path):
+    (tmp_path / "config.yaml").write_text("{}\n", encoding="utf-8")
+    assert project_config_path(tmp_path) == tmp_path / "config.yaml"
+    (tmp_path / "config.local.yaml").write_text("{}\n", encoding="utf-8")
+    assert project_config_path(tmp_path) == tmp_path / "config.local.yaml"

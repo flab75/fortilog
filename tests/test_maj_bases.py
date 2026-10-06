@@ -31,7 +31,7 @@ def fake_net(monkeypatch):
             raise urllib.error.HTTPError(url, 404, "Not Found", {}, io.BytesIO())
         if isinstance(pages[url], Exception):
             raise pages[url]
-        dest.write_text(pages[url])
+        dest.write_text(pages[url], encoding="utf-8")
 
     monkeypatch.setattr(maj_bases, "_telecharger", _dl)
     monkeypatch.setitem(maj_bases.MIN_LIGNES, "geo", 10)
@@ -50,7 +50,7 @@ def _rep_cfg(path, url="https://ex/fh.netset"):
 def test_reputation_recente_pas_de_telechargement(tmp_path, fake_net):
     pages, appels = fake_net
     f = tmp_path / "fh.netset"
-    f.write_text(NETSET_OK)
+    f.write_text(NETSET_OK, encoding="utf-8")
     res = maj_bases.mettre_a_jour(_rep_cfg(f))
     assert res[0]["statut"] == maj_bases.A_JOUR
     assert appels == []
@@ -59,12 +59,12 @@ def test_reputation_recente_pas_de_telechargement(tmp_path, fake_net):
 def test_reputation_perimee_remplacee(tmp_path, fake_net):
     pages, appels = fake_net
     f = tmp_path / "fh.netset"
-    f.write_text("# ancienne\n10.0.0.0/8\n")
+    f.write_text("# ancienne\n10.0.0.0/8\n", encoding="utf-8")
     _vieillir(f, 2)
     pages["https://ex/fh.netset"] = NETSET_OK
     res = maj_bases.mettre_a_jour(_rep_cfg(f))
     assert res[0]["statut"] == maj_bases.MAJ
-    assert f.read_text() == NETSET_OK
+    assert f.read_text(encoding="utf-8") == NETSET_OK
     assert (tmp_path / "fh.netset.maj.json").exists()
     assert not list(tmp_path.glob("*.tmp"))          # aucun temporaire laissé
 
@@ -72,25 +72,25 @@ def test_reputation_perimee_remplacee(tmp_path, fake_net):
 def test_page_html_n_ecrase_pas_la_base(tmp_path, fake_net):
     pages, _ = fake_net
     f = tmp_path / "fh.netset"
-    f.write_text(NETSET_OK)
+    f.write_text(NETSET_OK, encoding="utf-8")
     _vieillir(f, 2)
     pages["https://ex/fh.netset"] = HTML
     res = maj_bases.mettre_a_jour(_rep_cfg(f))
     assert res[0]["statut"] == maj_bases.ECHEC
     assert "conservée" in res[0]["detail"]
-    assert f.read_text() == NETSET_OK
+    assert f.read_text(encoding="utf-8") == NETSET_OK
     assert not list(tmp_path.glob("*.tmp"))
 
 
 def test_reseau_absent_base_conservee(tmp_path, fake_net):
     pages, _ = fake_net
     f = tmp_path / "fh.netset"
-    f.write_text(NETSET_OK)
+    f.write_text(NETSET_OK, encoding="utf-8")
     _vieillir(f, 2)
     pages["https://ex/fh.netset"] = urllib.error.URLError("no route to host")
     res = maj_bases.mettre_a_jour(_rep_cfg(f))
     assert res[0]["statut"] == maj_bases.ECHEC
-    assert f.read_text() == NETSET_OK
+    assert f.read_text(encoding="utf-8") == NETSET_OK
 
 
 def test_liste_sans_url_signalee_sans_source(tmp_path, fake_net):
@@ -103,7 +103,7 @@ def test_liste_sans_url_signalee_sans_source(tmp_path, fake_net):
 def test_force_retelecharge_une_base_a_jour(tmp_path, fake_net):
     pages, appels = fake_net
     f = tmp_path / "fh.netset"
-    f.write_text(NETSET_OK)
+    f.write_text(NETSET_OK, encoding="utf-8")
     pages["https://ex/fh.netset"] = NETSET_OK
     res = maj_bases.mettre_a_jour(_rep_cfg(f), force=True)
     assert res[0]["statut"] == maj_bases.MAJ
@@ -113,7 +113,7 @@ def test_force_retelecharge_une_base_a_jour(tmp_path, fake_net):
 def test_seuil_reglable(tmp_path, fake_net):
     _, appels = fake_net
     f = tmp_path / "fh.netset"
-    f.write_text(NETSET_OK)
+    f.write_text(NETSET_OK, encoding="utf-8")
     _vieillir(f, 2)
     cfg = {**_rep_cfg(f), "bases": {"maj": {"reputation_jours": 3}}}
     assert maj_bases.mettre_a_jour(cfg)[0]["statut"] == maj_bases.A_JOUR
@@ -132,7 +132,7 @@ def test_base_absente_est_telechargee(tmp_path, fake_net):
 
 def _geo(tmp_path, mois_mtime):
     f = tmp_path / "dbip.csv"
-    f.write_text(GEO_OK)
+    f.write_text(GEO_OK, encoding="utf-8")
     t = time.mktime(dt.date(*mois_mtime, 15).timetuple())
     os.utime(f, (t, t))
     return {"geo_db_path": str(f), "bases": {"maj": {"geo_url": "https://ex/dbip-{mois}.csv.gz"}}}, f
@@ -171,7 +171,7 @@ def test_geo_rien_de_publie_echec_base_conservee(tmp_path, fake_net):
     cfg, f = _geo(tmp_path, (2026, 6))
     res = maj_bases.mettre_a_jour(cfg, today=TODAY)
     assert res[0]["statut"] == maj_bases.ECHEC and "HTTP 404" in res[0]["detail"]
-    assert f.read_text() == GEO_OK
+    assert f.read_text(encoding="utf-8") == GEO_OK
 
 
 def test_mois_changement_d_annee():
@@ -182,18 +182,18 @@ def test_mois_changement_d_annee():
 
 def test_fortinet_perime_regenere(tmp_path, monkeypatch):
     f = tmp_path / "ftnt.netset"
-    f.write_text("# vieux\n66.35.16.0/20\n")
+    f.write_text("# vieux\n66.35.16.0/20\n", encoding="utf-8")
     _vieillir(f, 200)
     monkeypatch.setattr(fetch_fortinet_ranges, "fetch_netrefs", lambda org, timeout=30: [
         {"@startAddress": "23.249.48.0", "@endAddress": "23.249.63.255"}])
     res = maj_bases.mettre_a_jour({"fortinet_ranges_file": str(f)})
     assert res[0]["statut"] == maj_bases.MAJ
-    assert "23.249.48.0/20" in f.read_text()
+    assert "23.249.48.0/20" in f.read_text(encoding="utf-8")
 
 
 def test_fortinet_recent_pas_d_appel(tmp_path, monkeypatch):
     f = tmp_path / "ftnt.netset"
-    f.write_text("66.35.16.0/20\n")
+    f.write_text("66.35.16.0/20\n", encoding="utf-8")
     _vieillir(f, 100)
     monkeypatch.setattr(fetch_fortinet_ranges, "fetch_netrefs",
                         lambda *a, **k: pytest.fail("ARIN ne doit pas être interrogé"))
@@ -202,12 +202,12 @@ def test_fortinet_recent_pas_d_appel(tmp_path, monkeypatch):
 
 def test_fortinet_reponse_vide_conserve_le_fichier(tmp_path, monkeypatch):
     f = tmp_path / "ftnt.netset"
-    f.write_text("66.35.16.0/20\n")
+    f.write_text("66.35.16.0/20\n", encoding="utf-8")
     _vieillir(f, 200)
     monkeypatch.setattr(fetch_fortinet_ranges, "fetch_netrefs", lambda org, timeout=30: [])
     res = maj_bases.mettre_a_jour({"fortinet_ranges_file": str(f)})
     assert res[0]["statut"] == maj_bases.ECHEC
-    assert f.read_text() == "66.35.16.0/20\n"
+    assert f.read_text(encoding="utf-8") == "66.35.16.0/20\n"
 
 
 # ── Config, CLI ───────────────────────────────────────────────────────────────
@@ -234,6 +234,6 @@ def test_validate_accepte_le_config_du_projet(cfg):
 def test_cli_echec_affiche_meme_en_quiet(tmp_path, fake_net, capsys):
     f = tmp_path / "fh.netset"
     cfgf = tmp_path / "c.yaml"
-    cfgf.write_text(f"reputation_lists:\n  - {{nom: FH, path: {f}, url: 'https://ex/absent'}}\n")
+    cfgf.write_text(f"reputation_lists:\n  - {{nom: FH, path: {f}, url: 'https://ex/absent'}}\n", encoding="utf-8")
     _maj_bases_cli(cfgf, quiet=True)
     assert "⚠ FH : échec" in capsys.readouterr().err

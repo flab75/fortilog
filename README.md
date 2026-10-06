@@ -80,7 +80,9 @@ imposer un) et les dépendances y sont installées (réseau requis une fois). Do
 ou environnement incomplet → réinstallation automatique. Les chemins relatifs du
 `config.yaml` (`data/geo/…`) sont résolus par rapport au **dossier du fichier de config**,
 jamais du dossier courant ; sans `--config`, le CLI prend `./config.yaml` s'il existe,
-sinon celui du projet. (`run_ui.sh` est conservé comme alias de `./fortilog.sh ui`.)
+sinon le référentiel du projet. **Référentiel par défaut (UI et CLI)** : `config.local.yaml`
+(vraies valeurs, gitignoré) s'il existe, sinon `config.yaml` (anonymisé) — l'UI affiche
+alors un avertissement, car de vrais logs analysés avec l'exemple donnent des résultats faux. (`run_ui.sh` est conservé comme alias de `./fortilog.sh ui`.)
 
 ### Interface graphique (Streamlit)
 ```bash

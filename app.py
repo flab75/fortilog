@@ -17,13 +17,14 @@ sys.path.insert(0, str(ROOT))
 from fortilog.main import run
 from fortilog import confdiff, confgen, logguide, maj_bases
 import yaml
-from fortilog.common import SEV_ORDER, load_config, resolve_paths
+from fortilog.common import SEV_ORDER, load_config, resolve_paths, project_config_path
 from fortilog.ui_helpers import (
     prepare_events, prepare_metrics, prepare_agg,
     prepare_bursts, prepare_diff, prepare_chains, filter_events, SEV_COLORS,
 )
 
-DEFAULT_CONFIG = ROOT / "config.yaml"
+# config.local.yaml (vraies valeurs) s'il existe, sinon config.yaml (anonymisé, exemple).
+DEFAULT_CONFIG = project_config_path(ROOT)
 
 # Le Styler Pandas plafonne à 262 144 cellules : on limite les lignes affichées et on
 # désactive la coloration au-delà d'un seuil sûr (l'export Excel reste complet et coloré).
@@ -97,12 +98,18 @@ with st.sidebar:
     config_file = st.file_uploader(
         "Référentiel config.yaml (optionnel)",
         type=["yaml", "yml"],
-        help="Laissez vide pour utiliser le config.yaml du projet.",
+        help="Laissez vide pour utiliser le référentiel du projet "
+             "(config.local.yaml s'il existe, sinon config.yaml).",
     )
-    st.caption(
-        "Si aucun fichier n'est fourni, le `config.yaml` du répertoire du projet "
-        "est utilisé."
-    )
+    if config_file is not None:
+        st.caption(f"Référentiel utilisé : **{config_file.name}** (déposé).")
+    elif DEFAULT_CONFIG.name == "config.local.yaml":
+        st.caption("Référentiel utilisé : **config.local.yaml** (projet).")
+    else:
+        st.warning("Référentiel utilisé : **config.yaml**, la version ANONYMISÉE d'exemple "
+                   "(aucun `config.local.yaml` dans le projet). Sur de vrais logs, les IP des "
+                   "boîtiers et les comptes connus seront faux : déposez votre référentiel "
+                   "ou créez `config.local.yaml`.")
     st.divider()
     _echecs = [r for r in st.session_state["maj_bases"] if r["statut"] == maj_bases.ECHEC]
     with st.expander("🗄️ Bases hors-ligne" + (" — ⚠ échec de mise à jour" if _echecs else ""),
@@ -183,7 +190,7 @@ if run_btn and (uploaded_files or conf_files_up):
             # PROJET, pas du dossier temporaire où il est écrit -> résolus contre ROOT.
             cfg_path = input_dir / "_config.yaml"
             cfg_up = resolve_paths(yaml.safe_load(config_file.getvalue()) or {}, ROOT)
-            cfg_path.write_text(yaml.safe_dump(cfg_up, allow_unicode=True, sort_keys=False))
+            cfg_path.write_text(yaml.safe_dump(cfg_up, allow_unicode=True, sort_keys=False), encoding="utf-8")
         else:
             cfg_path = DEFAULT_CONFIG
 

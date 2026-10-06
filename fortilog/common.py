@@ -58,10 +58,20 @@ def ssl_context():
         return ssl.create_default_context()
 
 
+def project_config_path(project_dir=None) -> Path:
+    """Référentiel du projet : `config.local.yaml` (vraies valeurs, gitignoré) s'il existe,
+    sinon `config.yaml` (versionné, ANONYMISÉ). Préférer le local évite d'analyser de vrais
+    logs avec le référentiel d'exemple — cas réel : le pare-feu lui-même sortait en tête des
+    « acteurs à investiguer » parce que son WAN n'était pas celui du config anonymisé."""
+    d = Path(project_dir) if project_dir else PROJECT_DIR
+    local = d / "config.local.yaml"
+    return local if local.exists() else d / "config.yaml"
+
+
 def default_config_path() -> str:
-    """`config.yaml` du dossier courant s'il existe, sinon celui du projet — le CLI
-    fonctionne ainsi lancé depuis n'importe quel dossier."""
-    return "config.yaml" if Path("config.yaml").exists() else str(PROJECT_DIR / "config.yaml")
+    """`config.yaml` du dossier courant s'il existe, sinon le référentiel du projet
+    (`project_config_path`) — le CLI fonctionne ainsi lancé depuis n'importe quel dossier."""
+    return "config.yaml" if Path("config.yaml").exists() else str(project_config_path())
 
 # Ordre de sévérité (rang croissant) — sert au tri/au classement des constats.
 SEV_ORDER = {"info": 0, "faible": 1, "moyen": 2, "eleve": 3, "critique": 4}
