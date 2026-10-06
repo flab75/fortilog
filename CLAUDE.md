@@ -152,6 +152,11 @@ en tête du rapport texte, et la stocke dans `meta["analysis"]` (onglet Streamli
   VPN/locaux, groupes VPN, plages internes, destinations légitimes, motifs de
   comptes suspects, paramètres de rafale).
 - **Dépendances :** pandas, xlsxwriter, pyyaml, openpyxl.
+- **E/S texte : toujours `encoding="utf-8"`** (`open`, `read_text`, `write_text`). Sous Windows
+  le défaut est cp1252 : la CI Windows a échoué sur un rapport UTF-8 relu sans encodage
+  (« à » → « � »). Garde-fou : la CI tourne avec `PYTHONWARNDEFAULTENCODING=1` et
+  `filterwarnings = error::EncodingWarning` → tout oubli fait échouer les tests, même sous Linux.
+  Rester compatible **Python 3.11** (CI) : pas de backslash dans une expression de f-string.
 
 ## Règles de détection implémentées (`detect.py`, 16 règles)
 1. Login admin réussi depuis source **externe** → critique ; compte hors référentiel → élevé ; interne+connu → info.

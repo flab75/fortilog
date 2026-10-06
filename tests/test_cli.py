@@ -135,7 +135,7 @@ def test_fichier_identique_ignore_et_fenetre_temporelle_annoncee():
         assert len(doublons) == 1 and doublons[0]["doublon_de"] == "export.log"
         source = [f for f in meta["files"] if not f.get("doublon_de")][0]
         assert source["debut"] and source["fin"] and source["debut"] <= source["fin"]
-        txt = (Path(output_dir) / "rapport_fortigate.txt").read_text()
+        txt = (Path(output_dir) / "rapport_fortigate.txt").read_text(encoding="utf-8")
         assert "IDENTIQUE à export.log" in txt
         assert f"couvre {source['debut']} -> {source['fin']}" in txt
     finally:

@@ -5,8 +5,8 @@ from tests.conftest import FIXTURES
 
 
 def _diff():
-    ok = (FIXTURES / "confdiff_ok.conf").read_text()
-    cur = (FIXTURES / "confdiff_current.conf").read_text()
+    ok = (FIXTURES / "confdiff_ok.conf").read_text(encoding="utf-8")
+    cur = (FIXTURES / "confdiff_current.conf").read_text(encoding="utf-8")
     return confdiff.diff_configs(ok, cur)
 
 
@@ -78,7 +78,7 @@ def test_real_admin_add_still_critique():
 
 
 def test_no_change_empty_diff():
-    ok = (FIXTURES / "confdiff_ok.conf").read_text()
+    ok = (FIXTURES / "confdiff_ok.conf").read_text(encoding="utf-8")
     d = confdiff.diff_configs(ok, ok)
     assert d.empty
 

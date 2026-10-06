@@ -122,7 +122,7 @@ def guide_markdown(meta_files) -> str:
     for _, r in build_guide(meta_files).iterrows():
         L.append(f"**{r['type de log']}** — {r['utilité']}")
         L.append(f"  - contenu : {r['contenu']}")
-        L.append(f"  - exploité par : {r['ce que l\'outil en fait']}")
+        L.append("  - exploité par : " + r["ce que l'outil en fait"])
         if presence:
             L.append(f"  - dans cette analyse : {r['présent']}")
         L.append("")

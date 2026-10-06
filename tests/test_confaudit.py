@@ -4,14 +4,14 @@ from tests.conftest import FIXTURES
 
 
 def _audit(name, cfg):
-    text = (FIXTURES / name).read_text()
+    text = (FIXTURES / name).read_text(encoding="utf-8")
     return confaudit.audit_config(text, cfg, source_file=name, boitier="T1")
 
 
 # --- Parser ---
 
 def test_parse_tree_and_find_blocks():
-    text = (FIXTURES / "confaudit_compromis.conf").read_text()
+    text = (FIXTURES / "confaudit_compromis.conf").read_text(encoding="utf-8")
     root = confaudit.parse_config(text)
     admin_blocks = confaudit.find_blocks(root, "system admin")
     assert len(admin_blocks) == 1
@@ -24,7 +24,7 @@ def test_parse_tree_and_find_blocks():
 
 
 def test_parse_header_user():
-    text = (FIXTURES / "confaudit_compromis.conf").read_text()
+    text = (FIXTURES / "confaudit_compromis.conf").read_text(encoding="utf-8")
     assert confaudit.parse_header_user(text) == "ghost"
 
 

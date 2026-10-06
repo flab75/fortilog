@@ -124,7 +124,7 @@ def local_users_map(conf_paths) -> dict[str, dict]:
     from pathlib import Path
     out: dict[str, dict] = {}
     for p in conf_paths:
-        out.update(parse_local_users(Path(p).read_text(errors="replace")))
+        out.update(parse_local_users(Path(p).read_text(encoding="utf-8", errors="replace")))
     return out
 
 
@@ -297,7 +297,7 @@ def audit_files(conf_paths, cfg: dict, boitier_map=None, comptes_vises=(),
     rows = []
     for p in conf_paths:
         p = Path(p)
-        text = p.read_text(errors="replace")
+        text = p.read_text(encoding="utf-8", errors="replace")
         boitier = boitier_map(p.name) if boitier_map else "inconnu"
         # IP du boîtier concerné ; boîtier indéterminé -> union (ne rien attribuer à tort
         # serait pire que d'élargir : le détail dit d'où viennent les IP).

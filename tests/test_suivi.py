@@ -149,11 +149,11 @@ def test_comptes_vus_persiste_entre_runs():
     from fortilog.main import run
     input_dir, output_dir = _run_twice_dirs()
     try:
-        cfg = yaml.safe_load(CONFIG_PATH.read_text())
+        cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
         cfg["geo_db_path"] = str(FIXTURES / "geo_country_mini.csv")
         cfg["asn_db_path"] = None
         config_path = output_dir / "config_test.yaml"
-        config_path.write_text(yaml.safe_dump(cfg))
+        config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
 
         shutil.copy(FIXTURES / "comportement_pays_run1.log", input_dir / "scenario.log")
         tables1, _ = run(str(input_dir), str(config_path), str(output_dir))

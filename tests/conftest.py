@@ -27,7 +27,7 @@ def require_real_logs(path: Path) -> None:
 
 @pytest.fixture
 def cfg():
-    return yaml.safe_load(CONFIG_PATH.read_text())
+    return yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
 
 
 @pytest.fixture

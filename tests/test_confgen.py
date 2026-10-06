@@ -6,7 +6,7 @@ from fortilog import confgen
 from fortilog.validate import validate_config
 from tests.conftest import FIXTURES, REAL_LOGS_T1, require_real_logs
 
-SAMPLE = (FIXTURES / "confgen_sample.conf").read_text()
+SAMPLE = (FIXTURES / "confgen_sample.conf").read_text(encoding="utf-8")
 
 
 def test_extract_one_basic_fields():
@@ -64,7 +64,7 @@ def test_merge_multiple_confs():
 @pytest.mark.slow
 def test_real_conf_t1():
     require_real_logs(REAL_LOGS_T1)
-    confs = {p.name: p.read_text(errors="replace") for p in REAL_LOGS_T1.glob("*.conf")}
+    confs = {p.name: p.read_text(encoding="utf-8", errors="replace") for p in REAL_LOGS_T1.glob("*.conf")}
     assert confs, "aucun .conf dans les vrais logs T1"
     ref = confgen.extract_referential(confs)
     assert ref["boitiers"], "aucun boîtier extrait"

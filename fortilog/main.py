@@ -59,11 +59,11 @@ def _compute_config_diff(ref_conf, conf_files, logs_dir, cfg, boitier_for):
             "criticite", "auteur", "quand", "action_log"]
     if not ref_conf or not conf_files:
         return pd.DataFrame(columns=cols)
-    ref_text = Path(ref_conf).read_text(errors="replace")
+    ref_text = Path(ref_conf).read_text(encoding="utf-8", errors="replace")
     change_ev = confdiff.load_change_events(logs_dir, cfg) if logs_dir else pd.DataFrame()
     parts = []
     for cf in conf_files:
-        d = confdiff.diff_configs(ref_text, Path(cf).read_text(errors="replace"))
+        d = confdiff.diff_configs(ref_text, Path(cf).read_text(encoding="utf-8", errors="replace"))
         d = confdiff.attribute_changes(d, change_ev)
         d.insert(0, "boitier", boitier_for(cf.name))
         d.insert(1, "fichier", Path(cf).name)
@@ -72,7 +72,7 @@ def _compute_config_diff(ref_conf, conf_files, logs_dir, cfg, boitier_for):
 
 
 def run(input_dir, config_path, output_dir, ref_conf=None, etat_path=None, quiet=False):
-    cfg = yaml.safe_load(Path(config_path).read_text())
+    cfg = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
     errors = validate_config(cfg)
     if errors:
         msg = "Configuration invalide :\n" + "\n".join(f"  - {e}" for e in errors)

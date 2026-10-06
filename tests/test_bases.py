@@ -8,7 +8,7 @@ from fortilog.bases import check_bases
 
 def _cfg(tmp_path, age_max=90):
     geo = tmp_path / "geo.csv"
-    geo.write_text("start_ip,end_ip,country_code\n")
+    geo.write_text("start_ip,end_ip,country_code\n", encoding="utf-8")
     return {"geo_db_path": str(geo), "bases": {"age_max_jours": age_max}}, geo
 
 
@@ -50,9 +50,9 @@ def test_aucune_base_configuree():
 
 def test_reputation_lists_et_fortinet_ranges(tmp_path):
     rep = tmp_path / "firehol.netset"
-    rep.write_text("10.0.0.0/8\n")
+    rep.write_text("10.0.0.0/8\n", encoding="utf-8")
     ranges = tmp_path / "ranges.netset"
-    ranges.write_text("1.2.3.0/24\n")
+    ranges.write_text("1.2.3.0/24\n", encoding="utf-8")
     cfg = {"fortinet_ranges_file": str(ranges),
            "reputation_lists": [{"nom": "FireHOL L1", "path": str(rep)}]}
     bases = check_bases(cfg)

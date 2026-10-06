@@ -48,3 +48,6 @@ include = ["fortilog*"]
 
 [tool.pytest.ini_options]
 markers = ["slow: tests sur vrais logs FortiGate (nécessite les exports locaux)"]
+# Avec PYTHONWARNDEFAULTENCODING=1 (CI), tout open()/read_text() sans encoding échoue :
+# sous Windows le défaut est cp1252 et décode mal nos fichiers UTF-8 (bug CI rencontré).
+filterwarnings = ["error::EncodingWarning"]

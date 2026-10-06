@@ -127,7 +127,7 @@ def load_columns_for_rows(files, wanted: set, columns) -> pd.DataFrame:
         if not want:
             continue
         i = -1
-        with open(f, errors="replace") as fh:
+        with open(f, encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
